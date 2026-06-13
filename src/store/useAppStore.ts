@@ -9,14 +9,22 @@ import type {
   AuditLogEntry,
   Notification,
   AssetType,
-  HeirRelationship,
-  AssetStatus,
-  WillStatus,
   VerificationStatus,
   AuditActionType,
   ExecutionStep,
+  HealthCheckPeriod,
+  ReminderRule,
 } from '@/types';
-import { generateId, generateHash, DEFAULT_INACTIVITY_DAYS, DEFAULT_WITNESS_COUNT } from '@/constants';
+import {
+  generateId,
+  generateHash,
+  DEFAULT_INACTIVITY_DAYS,
+  DEFAULT_WITNESS_COUNT,
+  DEFAULT_HEALTH_CHECK_PERIOD,
+  DEFAULT_REMINDER_DAYS,
+  getHealthCheckStatus,
+  getHealthCheckPeriodDays,
+} from '@/constants';
 
 interface AppState {
   currentUser: User | null;
@@ -30,11 +38,16 @@ interface AppState {
   setCurrentUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
 
-  addAsset: (asset: Omit<DigitalAsset, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
+  addAsset: (asset: Omit<DigitalAsset, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'healthCheckPeriod' | 'reminderRule'> & { healthCheckPeriod?: HealthCheckPeriod; reminderRule?: ReminderRule }) => void;
   updateAsset: (id: string, updates: Partial<DigitalAsset>) => void;
   deleteAsset: (id: string) => void;
   getAssetsByType: (type: AssetType) => DigitalAsset[];
   getAssetsByHeir: (heirId: string) => DigitalAsset[];
+  verifyAsset: (id: string) => void;
+  updateAssetHealthCheck: (id: string, period: HealthCheckPeriod, customDays?: number, reminderRule?: ReminderRule) => void;
+  generateHealthCheckReminders: () => void;
+  getOverdueAssets: () => DigitalAsset[];
+  getWarningAssets: () => DigitalAsset[];
 
   addHeir: (heir: Omit<Heir, 'id' | 'createdAt' | 'isVerified' | 'assignedAssets'>) => void;
   updateHeir: (id: string, updates: Partial<Heir>) => void;
@@ -94,6 +107,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     createdAt: new Date('2024-01-15').toISOString(),
     updatedAt: new Date('2024-01-15').toISOString(),
     lastVerifiedAt: new Date('2024-06-01').toISOString(),
+    healthCheckPeriod: '30_days',
+    reminderRule: { enabled: true, daysBefore: DEFAULT_REMINDER_DAYS, repeat: true },
   },
   {
     id: 'asset-002',
@@ -110,6 +125,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     createdAt: new Date('2024-02-10').toISOString(),
     updatedAt: new Date('2024-02-10').toISOString(),
     lastVerifiedAt: new Date('2024-05-20').toISOString(),
+    healthCheckPeriod: '90_days',
+    reminderRule: { enabled: true, daysBefore: DEFAULT_REMINDER_DAYS, repeat: true },
   },
   {
     id: 'asset-003',
@@ -126,6 +143,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     createdAt: new Date('2024-03-05').toISOString(),
     updatedAt: new Date('2024-03-05').toISOString(),
     lastVerifiedAt: new Date('2024-04-15').toISOString(),
+    healthCheckPeriod: '7_days',
+    reminderRule: { enabled: true, daysBefore: 3, repeat: true },
   },
   {
     id: 'asset-004',
@@ -141,6 +160,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     status: 'active',
     createdAt: new Date('2024-03-20').toISOString(),
     updatedAt: new Date('2024-03-20').toISOString(),
+    healthCheckPeriod: '365_days',
+    reminderRule: { enabled: true, daysBefore: 30, repeat: true },
   },
   {
     id: 'asset-005',
@@ -157,6 +178,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     createdAt: new Date('2024-04-01').toISOString(),
     updatedAt: new Date('2024-04-01').toISOString(),
     lastVerifiedAt: new Date('2024-06-10').toISOString(),
+    healthCheckPeriod: '30_days',
+    reminderRule: { enabled: true, daysBefore: DEFAULT_REMINDER_DAYS, repeat: true },
   },
   {
     id: 'asset-006',
@@ -172,6 +195,8 @@ const createInitialAssets = (): DigitalAsset[] => [
     status: 'active',
     createdAt: new Date('2024-05-10').toISOString(),
     updatedAt: new Date('2024-05-10').toISOString(),
+    healthCheckPeriod: '180_days',
+    reminderRule: { enabled: false, daysBefore: DEFAULT_REMINDER_DAYS, repeat: false },
   },
 ];
 
@@ -390,6 +415,8 @@ export const useAppStore = create<AppState>()(
           status: 'active',
           createdAt: now,
           updatedAt: now,
+          healthCheckPeriod: asset.healthCheckPeriod || DEFAULT_HEALTH_CHECK_PERIOD,
+          reminderRule: asset.reminderRule || { enabled: true, daysBefore: DEFAULT_REMINDER_DAYS, repeat: true },
         };
         set((state) => ({ assets: [newAsset, ...state.assets] }));
         get().addAuditLog({
@@ -432,6 +459,138 @@ export const useAppStore = create<AppState>()(
       getAssetsByType: (type) => get().assets.filter((a) => a.type === type),
 
       getAssetsByHeir: (heirId) => get().assets.filter((a) => a.heirId === heirId),
+
+      verifyAsset: (id) => {
+        const now = new Date().toISOString();
+        const asset = get().assets.find((a) => a.id === id);
+        if (!asset) return;
+
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            a.id === id
+              ? { ...a, lastVerifiedAt: now, updatedAt: now }
+              : a
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'asset_verified',
+          description: `验证资产：${asset.name}`,
+          resourceType: 'asset',
+          resourceId: id,
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '资产验证完成',
+          message: `资产「${asset.name}」已完成健康检查验证`,
+        });
+      },
+
+      updateAssetHealthCheck: (id, period, customDays, reminderRule) => {
+        const asset = get().assets.find((a) => a.id === id);
+        if (!asset) return;
+
+        const updates: Partial<DigitalAsset> = {
+          healthCheckPeriod: period,
+          customPeriodDays: customDays,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (reminderRule) {
+          updates.reminderRule = reminderRule;
+        }
+
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            a.id === id ? { ...a, ...updates } : a
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'healthcheck_settings_updated',
+          description: `更新资产健康检查设置：${asset.name}`,
+          resourceType: 'asset',
+          resourceId: id,
+        });
+      },
+
+      generateHealthCheckReminders: () => {
+        const { assets, notifications } = get();
+        const now = new Date();
+
+        assets.forEach((asset) => {
+          if (!asset.reminderRule.enabled) return;
+
+          const status = getHealthCheckStatus(
+            asset.lastVerifiedAt,
+            asset.healthCheckPeriod,
+            asset.customPeriodDays,
+            asset.reminderRule.daysBefore
+          );
+
+          if (status === 'overdue' || status === 'warning') {
+            const periodDays = getHealthCheckPeriodDays(asset.healthCheckPeriod, asset.customPeriodDays);
+            const lastVerifiedDays = asset.lastVerifiedAt
+              ? Math.floor((now.getTime() - new Date(asset.lastVerifiedAt).getTime()) / (1000 * 60 * 60 * 24))
+              : 0;
+
+            const existingReminder = notifications.find(
+              (n) =>
+                n.message.includes(asset.name) &&
+                (n.title === '资产健康检查逾期' || n.title === '资产健康检查即将到期') &&
+                !n.read
+            );
+
+            if (!existingReminder || asset.reminderRule.repeat) {
+              const isOverdue = status === 'overdue';
+              const title = isOverdue ? '资产健康检查逾期' : '资产健康检查即将到期';
+              const message = isOverdue
+                ? `资产「${asset.name}」已超过验证周期 ${lastVerifiedDays - periodDays} 天，请尽快验证`
+                : `资产「${asset.name}」将在 ${periodDays - lastVerifiedDays} 天后到期，请及时验证`;
+
+              get().addNotification({
+                type: isOverdue ? 'error' : 'warning',
+                title,
+                message,
+              });
+
+              get().addAuditLog({
+                action: 'healthcheck_reminder',
+                description: `${title}：${asset.name}`,
+                resourceType: 'asset',
+                resourceId: asset.id,
+              });
+            }
+          }
+        });
+      },
+
+      getOverdueAssets: () => {
+        const { assets } = get();
+        return assets.filter((asset) => {
+          const status = getHealthCheckStatus(
+            asset.lastVerifiedAt,
+            asset.healthCheckPeriod,
+            asset.customPeriodDays,
+            asset.reminderRule.daysBefore
+          );
+          return status === 'overdue';
+        });
+      },
+
+      getWarningAssets: () => {
+        const { assets } = get();
+        return assets.filter((asset) => {
+          const status = getHealthCheckStatus(
+            asset.lastVerifiedAt,
+            asset.healthCheckPeriod,
+            asset.customPeriodDays,
+            asset.reminderRule.daysBefore
+          );
+          return status === 'warning';
+        });
+      },
 
       addHeir: (heir) => {
         const now = new Date().toISOString();

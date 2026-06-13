@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -75,7 +75,45 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   witness_approved: '见证人批准',
   lawyer_approved: '律师批准',
   notification_sent: '发送通知',
+  asset_verified: '资产验证',
+  healthcheck_reminder: '健康检查提醒',
+  healthcheck_settings_updated: '健康检查设置更新',
 };
+
+export const HEALTH_CHECK_PERIOD_LABELS: Record<HealthCheckPeriod, string> = {
+  '7_days': '每周',
+  '30_days': '每月',
+  '90_days': '每季度',
+  '180_days': '每半年',
+  '365_days': '每年',
+  'custom': '自定义',
+};
+
+export const HEALTH_CHECK_PERIOD_DAYS: Record<HealthCheckPeriod, number> = {
+  '7_days': 7,
+  '30_days': 30,
+  '90_days': 90,
+  '180_days': 180,
+  '365_days': 365,
+  'custom': 0,
+};
+
+export const HEALTH_CHECK_STATUS_LABELS: Record<HealthCheckStatus, string> = {
+  'normal': '正常',
+  'warning': '即将到期',
+  'overdue': '已逾期',
+  'never': '未验证',
+};
+
+export const HEALTH_CHECK_STATUS_COLORS: Record<HealthCheckStatus, string> = {
+  'normal': 'bg-green-100 text-green-700',
+  'warning': 'bg-amber-100 text-amber-700',
+  'overdue': 'bg-red-100 text-red-700',
+  'never': 'bg-gray-100 text-gray-700',
+};
+
+export const DEFAULT_HEALTH_CHECK_PERIOD: HealthCheckPeriod = '90_days';
+export const DEFAULT_REMINDER_DAYS = 7;
 
 export const DEFAULT_INACTIVITY_DAYS = 180;
 
@@ -111,4 +149,47 @@ export const daysSince = (dateString: string): number => {
   const date = new Date(dateString);
   const diffTime = Math.abs(now.getTime() - date.getTime());
   return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+};
+
+export const getHealthCheckPeriodDays = (period: HealthCheckPeriod, customDays?: number): number => {
+  if (period === 'custom' && customDays) {
+    return customDays;
+  }
+  return HEALTH_CHECK_PERIOD_DAYS[period];
+};
+
+export const getDaysSinceLastVerification = (lastVerifiedAt?: string): number | null => {
+  if (!lastVerifiedAt) return null;
+  return daysSince(lastVerifiedAt);
+};
+
+export const getHealthCheckStatus = (
+  lastVerifiedAt: string | undefined,
+  period: HealthCheckPeriod,
+  customDays?: number,
+  reminderDays?: number
+): HealthCheckStatus => {
+  if (!lastVerifiedAt) return 'never';
+
+  const daysSinceVerification = daysSince(lastVerifiedAt);
+  const periodDays = getHealthCheckPeriodDays(period, customDays);
+  const reminderThreshold = periodDays - (reminderDays || DEFAULT_REMINDER_DAYS);
+
+  if (daysSinceVerification >= periodDays) return 'overdue';
+  if (daysSinceVerification >= reminderThreshold) return 'warning';
+  return 'normal';
+};
+
+export const getNextVerificationDate = (
+  lastVerifiedAt: string | undefined,
+  period: HealthCheckPeriod,
+  customDays?: number
+): string => {
+  if (!lastVerifiedAt) {
+    return '未设置';
+  }
+  const lastDate = new Date(lastVerifiedAt);
+  const periodDays = getHealthCheckPeriodDays(period, customDays);
+  lastDate.setDate(lastDate.getDate() + periodDays);
+  return formatDate(lastDate.toISOString());
 };

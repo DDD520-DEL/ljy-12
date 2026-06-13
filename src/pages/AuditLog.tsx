@@ -18,7 +18,7 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import { AUDIT_ACTION_LABELS, USER_ROLE_LABELS, formatDate } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { AuditActionType, AuditLogEntry } from '@/types';
+import type { AuditActionType } from '@/types';
 
 export default function AuditLog() {
   const auditLogs = useAppStore((state) => state.auditLogs);
@@ -56,11 +56,13 @@ export default function AuditLog() {
   const isChainValid = verifyChainIntegrity();
 
   const getActionIcon = (action: AuditActionType) => {
+    if (action.includes('healthcheck')) return Shield;
     if (action.includes('asset')) return FolderKanban;
     if (action.includes('heir')) return Users;
     if (action.includes('will')) return FileText;
     if (action.includes('mfa')) return Shield;
     if (action.includes('login') || action.includes('logout')) return User;
+    if (action.includes('notification')) return Zap;
     return Zap;
   };
 
@@ -68,10 +70,10 @@ export default function AuditLog() {
     if (action.includes('deleted') || action.includes('removed') || action.includes('disabled')) {
       return 'bg-red-100 text-red-600';
     }
-    if (action.includes('created') || action.includes('added') || action.includes('enabled') || action.includes('approved')) {
+    if (action.includes('created') || action.includes('added') || action.includes('enabled') || action.includes('approved') || action.includes('verified')) {
       return 'bg-green-100 text-green-600';
     }
-    if (action.includes('updated') || action.includes('triggered')) {
+    if (action.includes('updated') || action.includes('triggered') || action.includes('reminder')) {
       return 'bg-amber-100 text-amber-600';
     }
     return 'bg-blue-100 text-blue-600';

@@ -10,6 +10,16 @@ export type WillStatus = 'draft' | 'active' | 'triggered' | 'executing' | 'compl
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
+export type HealthCheckPeriod = '7_days' | '30_days' | '90_days' | '180_days' | '365_days' | 'custom';
+
+export type HealthCheckStatus = 'normal' | 'warning' | 'overdue' | 'never';
+
+export type ReminderRule = {
+  enabled: boolean;
+  daysBefore: number;
+  repeat: boolean;
+};
+
 export type UserRole = 'owner' | 'heir' | 'witness' | 'lawyer' | 'admin';
 
 export type AuditActionType =
@@ -27,7 +37,10 @@ export type AuditActionType =
   | 'asset_transferred'
   | 'witness_approved'
   | 'lawyer_approved'
-  | 'notification_sent';
+  | 'notification_sent'
+  | 'asset_verified'
+  | 'healthcheck_reminder'
+  | 'healthcheck_settings_updated';
 
 export interface DigitalAsset {
   id: string;
@@ -44,6 +57,9 @@ export interface DigitalAsset {
   createdAt: string;
   updatedAt: string;
   lastVerifiedAt?: string;
+  healthCheckPeriod: HealthCheckPeriod;
+  customPeriodDays?: number;
+  reminderRule: ReminderRule;
 }
 
 export interface Heir {
