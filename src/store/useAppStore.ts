@@ -1056,33 +1056,70 @@ export const useAppStore = create<AppState>()(
         const uniqueNotified = new Set<string>();
         steps.forEach(s => s.notifyTargets.forEach(t => uniqueNotified.add(t.email)));
 
-        const heirBreakdown = heirs.map(heir => {
-          const heirAssets = steps.flatMap(s => s.transferItems).filter(t => t.heirId === heir.id);
-          return {
-            heirId: heir.id,
-            heirName: heir.name,
-            assetCount: heirAssets.length,
-            assetValue: heirAssets.reduce((sum, t) => sum + (t.assetValue || 0), 0),
-          };
-        }).filter(h => h.assetCount > 0);
+        const allTransferItems = steps.flatMap(s => s.transferItems);
 
-        const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
-        const totalTransferredValue = steps.flatMap(s => s.transferItems).reduce((sum, t) => sum + (t.assetValue || 0), 0);
+        const uniqueTransferredAssetIds = new Set<string>();
+        allTransferItems.forEach(t => uniqueTransferredAssetIds.add(t.assetId));
+        const uniqueTransferredAssetIdSet = uniqueTransferredAssetIds;
+
+        const assetValueMap = new Map<string, number>();
+        allTransferItems.forEach(t => {
+          if (!assetValueMap.has(t.assetId)) {
+            assetValueMap.set(t.assetId, t.assetValue || 0);
+          }
+        });
+        const uniqueTransferredValue = Array.from(assetValueMap.values()).reduce((sum, v) => sum + v, 0);
+
+        const heirAssetMap = new Map<string, { ids: Set<string>; value: number }>();
+        allTransferItems.forEach(t => {
+          if (!heirAssetMap.has(t.heirId)) {
+            heirAssetMap.set(t.heirId, { ids: new Set(), value: 0 });
+          }
+          const entry = heirAssetMap.get(t.heirId)!;
+          if (!entry.ids.has(t.assetId)) {
+            entry.ids.add(t.assetId);
+            entry.value += t.assetValue || 0;
+          }
+        });
+
+        const heirBreakdown = heirs
+          .filter(heir => heirAssetMap.has(heir.id))
+          .map(heir => {
+            const entry = heirAssetMap.get(heir.id)!;
+            return {
+              heirId: heir.id,
+              heirName: heir.name,
+              assetCount: entry.ids.size,
+              assetValue: entry.value,
+            };
+          });
+
         const assignedRatio = assets.length > 0
-          ? steps.flatMap(s => s.transferItems).length / assets.length
+          ? uniqueTransferredAssetIdSet.size / assets.length
           : 0;
 
         let readinessScore = 100;
         readinessScore -= warnings.length * 5;
         readinessScore -= (1 - assignedRatio) * 20;
+
+        const assetsWithHeir = assets.filter(a => a.heirId || a.heirChain.length > 0);
+        const unassignedInSteps = assetsWithHeir.filter(a => !uniqueTransferredAssetIdSet.has(a.id));
+        readinessScore -= unassignedInSteps.length * 3;
+
+        const stepsWithoutAssets = steps.filter(s =>
+          (s.actionType === 'transfer' || s.actionType === 'reveal_credentials' || s.actionType === 'delete_data') &&
+          s.transferItems.length === 0
+        );
+        readinessScore -= stepsWithoutAssets.length * 5;
+
         readinessScore = Math.max(0, Math.min(100, Math.round(readinessScore)));
 
         const summary: SimulationSummary = {
           totalSteps: steps.length,
           totalDurationDays: cumulativeDays,
           totalNotifiedPeople: uniqueNotified.size,
-          totalTransferredAssets: steps.flatMap(s => s.transferItems).length,
-          totalAssetValue: totalTransferredValue,
+          totalTransferredAssets: uniqueTransferredAssetIdSet.size,
+          totalAssetValue: uniqueTransferredValue,
           heirBreakdown,
           warnings,
           readinessScore,
