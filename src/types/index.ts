@@ -167,3 +167,72 @@ export interface Notification {
   read: boolean;
   createdAt: string;
 }
+
+export interface SimulationNotifyTarget {
+  heirId?: string;
+  witnessId?: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: 'heir' | 'witness' | 'lawyer';
+  notificationMethod: 'email' | 'sms' | 'both';
+}
+
+export interface SimulationTransferItem {
+  assetId: string;
+  assetName: string;
+  assetType: AssetType;
+  assetValue?: number;
+  heirId: string;
+  heirName: string;
+  transferInstructions?: string;
+}
+
+export interface SimulationStepDetail {
+  stepId: string;
+  stepOrder: number;
+  stepTitle: string;
+  stepDescription: string;
+  actionType: ExecutionStep['actionType'];
+  delayDays: number;
+  cumulativeDelayDays: number;
+  notifyTargets: SimulationNotifyTarget[];
+  transferItems: SimulationTransferItem[];
+  estimatedExecutionDate: string;
+  warnings: string[];
+}
+
+export interface SimulationSummary {
+  totalSteps: number;
+  totalDurationDays: number;
+  totalNotifiedPeople: number;
+  totalTransferredAssets: number;
+  totalAssetValue: number;
+  heirBreakdown: {
+    heirId: string;
+    heirName: string;
+    assetCount: number;
+    assetValue: number;
+  }[];
+  warnings: string[];
+  readinessScore: number;
+}
+
+export interface SimulationReport {
+  id: string;
+  simulationTime: string;
+  triggerCondition: TriggerCondition;
+  steps: SimulationStepDetail[];
+  summary: SimulationSummary;
+  triggerDate: string;
+}
+
+export type SimulationMode = 'idle' | 'running' | 'completed';
+
+export interface SimulationState {
+  mode: SimulationMode;
+  currentStepIndex: number;
+  report: SimulationReport | null;
+  isPlaying: boolean;
+  playSpeed: number;
+}

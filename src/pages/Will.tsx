@@ -21,7 +21,9 @@ import {
   User,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import {
   TRIGGER_TYPE_LABELS,
@@ -159,12 +161,19 @@ export default function Will() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">数字遗嘱</h1>
           <p className="text-gray-500 mt-1">设置触发条件和资产执行流程</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            to="/simulation"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors border border-purple-200"
+          >
+            <Sparkles className="w-5 h-5" />
+            沙箱模拟
+          </Link>
           {will?.status === 'draft' && (
             <button
               onClick={activateWill}

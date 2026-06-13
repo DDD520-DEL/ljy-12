@@ -14,6 +14,12 @@ import type {
   ExecutionStep,
   HealthCheckPeriod,
   ReminderRule,
+  SimulationState,
+  SimulationReport,
+  SimulationStepDetail,
+  SimulationNotifyTarget,
+  SimulationTransferItem,
+  SimulationSummary,
 } from '@/types';
 import {
   generateId,
@@ -24,6 +30,8 @@ import {
   DEFAULT_REMINDER_DAYS,
   getHealthCheckStatus,
   getHealthCheckPeriodDays,
+  addDaysToDate,
+  formatDate,
 } from '@/constants';
 
 interface AppState {
@@ -81,6 +89,14 @@ interface AppState {
   markAllNotificationsRead: () => void;
 
   recordActivity: () => void;
+
+  simulation: SimulationState;
+  startSimulation: () => void;
+  stopSimulation: () => void;
+  resetSimulation: () => void;
+  advanceSimulationStep: () => void;
+  setSimulationPlaySpeed: (speed: number) => void;
+  toggleSimulationPlay: () => void;
 }
 
 const initialUser: User = {
@@ -906,6 +922,259 @@ export const useAppStore = create<AppState>()(
               : state.currentUser,
           };
         });
+      },
+
+      simulation: {
+        mode: 'idle',
+        currentStepIndex: -1,
+        report: null,
+        isPlaying: false,
+        playSpeed: 1,
+      },
+
+      startSimulation: () => {
+        const { will, assets, heirs, witnesses } = get();
+        if (!will) {
+          get().addNotification({
+            type: 'error',
+            title: '模拟失败',
+            message: '未找到遗嘱配置',
+          });
+          return;
+        }
+
+        const warnings: string[] = [];
+        const triggerDate = new Date().toISOString();
+
+        if (will.triggerCondition.requiresWitnessConfirmation) {
+          const verifiedCount = witnesses.filter(w => w.verificationStatus === 'verified').length;
+          const required = will.triggerCondition.witnessCount || DEFAULT_WITNESS_COUNT;
+          if (verifiedCount < required) {
+            warnings.push(`见证人验证不足：已验证 ${verifiedCount}/${required} 位`);
+          }
+        }
+        if (will.triggerCondition.lawyerApprovalRequired) {
+          const verifiedLawyers = witnesses.filter(w => w.isLawyer && w.verificationStatus === 'verified').length;
+          if (verifiedLawyers < 1) {
+            warnings.push('缺少已验证的律师审批');
+          }
+        }
+
+        const unassignedAssets = assets.filter(a => !a.heirId && a.heirChain.length === 0);
+        if (unassignedAssets.length > 0) {
+          warnings.push(`${unassignedAssets.length} 项资产未分配继承人`);
+        }
+
+        const unverifiedHeirs = heirs.filter(h => !h.isVerified);
+        if (unverifiedHeirs.length > 0) {
+          warnings.push(`${unverifiedHeirs.length} 位继承人尚未完成身份验证`);
+        }
+
+        const heirMap = new Map(heirs.map(h => [h.id, h]));
+        const witnessMap = new Map(witnesses.map(w => [w.id, w]));
+        const assetMap = new Map(assets.map(a => [a.id, a]));
+
+        let cumulativeDays = 0;
+        const steps: SimulationStepDetail[] = will.executionSteps
+          .sort((a, b) => a.order - b.order)
+          .map((step) => {
+            cumulativeDays += step.delayDays;
+            const stepWarnings: string[] = [];
+
+            const notifyTargets: SimulationNotifyTarget[] = [];
+            (step.targetHeirIds || []).forEach(heirId => {
+              const heir = heirMap.get(heirId);
+              if (heir) {
+                notifyTargets.push({
+                  heirId: heir.id,
+                  name: heir.name,
+                  email: heir.email,
+                  phone: heir.phone,
+                  role: 'heir',
+                  notificationMethod: heir.notificationPreference,
+                });
+              } else {
+                stepWarnings.push(`继承人 ${heirId} 不存在`);
+              }
+            });
+
+            if (step.actionType === 'notify' && notifyTargets.length === 0) {
+              will.witnessIds.forEach(witnessId => {
+                const witness = witnessMap.get(witnessId);
+                if (witness) {
+                  notifyTargets.push({
+                    witnessId: witness.id,
+                    name: witness.name,
+                    email: witness.email,
+                    phone: witness.phone,
+                    role: witness.isLawyer ? 'lawyer' : 'witness',
+                    notificationMethod: 'email',
+                  });
+                }
+              });
+            }
+
+            const transferItems: SimulationTransferItem[] = [];
+            (step.targetAssetIds || []).forEach(assetId => {
+              const asset = assetMap.get(assetId);
+              if (asset) {
+                const heirId = asset.heirChain[0] || asset.heirId;
+                const heir = heirId ? heirMap.get(heirId) : undefined;
+                if (heir) {
+                  transferItems.push({
+                    assetId: asset.id,
+                    assetName: asset.name,
+                    assetType: asset.type,
+                    assetValue: asset.value,
+                    heirId: heir.id,
+                    heirName: heir.name,
+                    transferInstructions: asset.transferInstructions,
+                  });
+                } else {
+                  stepWarnings.push(`资产「${asset.name}」未指定有效继承人`);
+                }
+              } else {
+                stepWarnings.push(`资产 ${assetId} 不存在`);
+              }
+            });
+
+            return {
+              stepId: step.id,
+              stepOrder: step.order,
+              stepTitle: step.title,
+              stepDescription: step.description,
+              actionType: step.actionType,
+              delayDays: step.delayDays,
+              cumulativeDelayDays: cumulativeDays,
+              notifyTargets,
+              transferItems,
+              estimatedExecutionDate: addDaysToDate(triggerDate, cumulativeDays),
+              warnings: stepWarnings,
+            };
+          });
+
+        const uniqueNotified = new Set<string>();
+        steps.forEach(s => s.notifyTargets.forEach(t => uniqueNotified.add(t.email)));
+
+        const heirBreakdown = heirs.map(heir => {
+          const heirAssets = steps.flatMap(s => s.transferItems).filter(t => t.heirId === heir.id);
+          return {
+            heirId: heir.id,
+            heirName: heir.name,
+            assetCount: heirAssets.length,
+            assetValue: heirAssets.reduce((sum, t) => sum + (t.assetValue || 0), 0),
+          };
+        }).filter(h => h.assetCount > 0);
+
+        const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
+        const totalTransferredValue = steps.flatMap(s => s.transferItems).reduce((sum, t) => sum + (t.assetValue || 0), 0);
+        const assignedRatio = assets.length > 0
+          ? steps.flatMap(s => s.transferItems).length / assets.length
+          : 0;
+
+        let readinessScore = 100;
+        readinessScore -= warnings.length * 5;
+        readinessScore -= (1 - assignedRatio) * 20;
+        readinessScore = Math.max(0, Math.min(100, Math.round(readinessScore)));
+
+        const summary: SimulationSummary = {
+          totalSteps: steps.length,
+          totalDurationDays: cumulativeDays,
+          totalNotifiedPeople: uniqueNotified.size,
+          totalTransferredAssets: steps.flatMap(s => s.transferItems).length,
+          totalAssetValue: totalTransferredValue,
+          heirBreakdown,
+          warnings,
+          readinessScore,
+        };
+
+        const report: SimulationReport = {
+          id: generateId(),
+          simulationTime: new Date().toISOString(),
+          triggerCondition: will.triggerCondition,
+          steps,
+          summary,
+          triggerDate,
+        };
+
+        set({
+          simulation: {
+            mode: 'running',
+            currentStepIndex: 0,
+            report,
+            isPlaying: false,
+            playSpeed: 1,
+          },
+        });
+
+        get().addNotification({
+          type: 'info',
+          title: '沙箱模拟已启动',
+          message: `共 ${steps.length} 个执行步骤，预计 ${cumulativeDays} 天完成`,
+        });
+      },
+
+      stopSimulation: () => {
+        set((state) => ({
+          simulation: {
+            ...state.simulation,
+            mode: 'completed',
+            isPlaying: false,
+          },
+        }));
+      },
+
+      resetSimulation: () => {
+        set({
+          simulation: {
+            mode: 'idle',
+            currentStepIndex: -1,
+            report: null,
+            isPlaying: false,
+            playSpeed: 1,
+          },
+        });
+      },
+
+      advanceSimulationStep: () => {
+        const { simulation } = get();
+        if (!simulation.report) return;
+
+        const nextIndex = simulation.currentStepIndex + 1;
+        if (nextIndex >= simulation.report.steps.length) {
+          set({
+            simulation: {
+              ...simulation,
+              mode: 'completed',
+              isPlaying: false,
+            },
+          });
+        } else {
+          set({
+            simulation: {
+              ...simulation,
+              currentStepIndex: nextIndex,
+            },
+          });
+        }
+      },
+
+      setSimulationPlaySpeed: (speed: number) => {
+        set((state) => ({
+          simulation: {
+            ...state.simulation,
+            playSpeed: speed,
+          },
+        }));
+      },
+
+      toggleSimulationPlay: () => {
+        set((state) => ({
+          simulation: {
+            ...state.simulation,
+            isPlaying: !state.simulation.isPlaying,
+          },
+        }));
       },
     }),
     {

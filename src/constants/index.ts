@@ -197,3 +197,49 @@ export const getNextVerificationDate = (
   lastDate.setDate(lastDate.getDate() + periodDays);
   return formatDate(lastDate.toISOString());
 };
+
+export const EXECUTION_ACTION_LABELS: Record<string, string> = {
+  notify: '发送通知',
+  transfer: '移交资产',
+  reveal_credentials: '披露凭证',
+  delete_data: '删除数据',
+};
+
+export const EXECUTION_ACTION_COLORS: Record<string, string> = {
+  notify: 'bg-blue-100 text-blue-700 border-blue-200',
+  transfer: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  reveal_credentials: 'bg-amber-100 text-amber-700 border-amber-200',
+  delete_data: 'bg-red-100 text-red-700 border-red-200',
+};
+
+export const EXECUTION_ACTION_ICONS: Record<string, string> = {
+  notify: 'bell',
+  transfer: 'folder-kanban',
+  reveal_credentials: 'key',
+  delete_data: 'trash',
+};
+
+export const SIMULATION_ROLE_LABELS: Record<string, string> = {
+  heir: '继承人',
+  witness: '见证人',
+  lawyer: '律师',
+};
+
+export const SIMULATION_NOTIFY_METHOD_LABELS: Record<string, string> = {
+  email: '邮件',
+  sms: '短信',
+  both: '邮件+短信',
+};
+
+export const addDaysToDate = (dateStr: string, days: number): string => {
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+};
+
+export const formatReadinessScore = (score: number): { label: string; color: string } => {
+  if (score >= 90) return { label: '准备充分', color: 'text-emerald-600 bg-emerald-100' };
+  if (score >= 70) return { label: '基本就绪', color: 'text-blue-600 bg-blue-100' };
+  if (score >= 50) return { label: '部分就绪', color: 'text-amber-600 bg-amber-100' };
+  return { label: '需要完善', color: 'text-red-600 bg-red-100' };
+};

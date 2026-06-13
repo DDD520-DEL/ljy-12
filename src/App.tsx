@@ -7,6 +7,7 @@ import Will from "@/pages/Will";
 import MFA from "@/pages/MFA";
 import Witnesses from "@/pages/Witnesses";
 import AuditLog from "@/pages/AuditLog";
+import Simulation from "@/pages/Simulation";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/assets" element={<Assets />} />
           <Route path="/heirs" element={<Heirs />} />
           <Route path="/will" element={<Will />} />
+          <Route path="/simulation" element={<Simulation />} />
           <Route path="/mfa" element={<MFA />} />
           <Route path="/witnesses" element={<Witnesses />} />
           <Route path="/audit" element={<AuditLog />} />

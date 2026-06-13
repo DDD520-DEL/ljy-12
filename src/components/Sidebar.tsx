@@ -8,6 +8,7 @@ import {
   Scale,
   History,
   Bell,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -17,6 +18,7 @@ const navItems = [
   { path: '/assets', label: '数字资产', icon: FolderKanban },
   { path: '/heirs', label: '继承人管理', icon: Users },
   { path: '/will', label: '数字遗嘱', icon: FileText },
+  { path: '/simulation', label: '沙箱模拟', icon: Sparkles },
   { path: '/mfa', label: '身份验证', icon: Shield },
   { path: '/witnesses', label: '见证授权', icon: Scale },
   { path: '/audit', label: '审计日志', icon: History },
