@@ -638,7 +638,16 @@ export const useAppStore = create<AppState>()(
             .filter((h) => h.id !== id)
             .sort((a, b) => a.priority - b.priority)
             .map((h, index) => ({ ...h, priority: index + 1 }));
-          return { heirs: updatedHeirs };
+          const updatedAssets = state.assets.map((asset) => {
+            const newChain = asset.heirChain.filter((heirId) => heirId !== id);
+            const newHeirId = newChain.length > 0 ? newChain[0] : undefined;
+            return {
+              ...asset,
+              heirChain: newChain,
+              heirId: newHeirId,
+            };
+          });
+          return { heirs: updatedHeirs, assets: updatedAssets };
         });
         if (heir) {
           get().addAuditLog({
