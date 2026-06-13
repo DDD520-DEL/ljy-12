@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -22,6 +22,14 @@ import {
   ChevronRight,
   PlusCircle,
   MinusCircle,
+  CheckSquare,
+  Square,
+  Users,
+  Tag,
+  Download,
+  Layers,
+  Check,
+  XCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -35,6 +43,7 @@ import {
   HEALTH_CHECK_STATUS_COLORS,
   HEALTH_CHECK_PERIOD_LABELS,
   DEFAULT_REMINDER_DAYS,
+  formatDate,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule } from '@/types';
@@ -66,13 +75,22 @@ export default function Assets() {
   const verifyAsset = useAppStore((state) => state.verifyAsset);
   const updateAssetHealthCheck = useAppStore((state) => state.updateAssetHealthCheck);
   const generateHealthCheckReminders = useAppStore((state) => state.generateHealthCheckReminders);
+  const bulkUpdateHeir = useAppStore((state) => state.bulkUpdateHeir);
+  const bulkUpdateType = useAppStore((state) => state.bulkUpdateType);
+  const addAuditLog = useAppStore((state) => state.addAuditLog);
+  const addNotification = useAppStore((state) => state.addNotification);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<AssetType | 'all'>('all');
   const [showModal, setShowModal] = useState(false);
   const [showHealthCheckModal, setShowHealthCheckModal] = useState(false);
+  const [showBulkHeirModal, setShowBulkHeirModal] = useState(false);
+  const [showBulkTypeModal, setShowBulkTypeModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<DigitalAsset | null>(null);
   const [healthCheckAsset, setHealthCheckAsset] = useState<DigitalAsset | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkHeirChain, setBulkHeirChain] = useState<string[]>([]);
+  const [bulkType, setBulkType] = useState<AssetType>('social_media');
   const [formData, setFormData] = useState({
     name: '',
     type: 'social_media' as AssetType,
@@ -101,6 +119,38 @@ export default function Assets() {
     const matchesType = filterType === 'all' || asset.type === filterType;
     return matchesSearch && matchesType;
   });
+
+  const selectedAssets = useMemo(
+    () => assets.filter((a) => selectedIds.has(a.id)),
+    [selectedIds, assets]
+  );
+
+  const allSelected = filteredAssets.length > 0 && filteredAssets.every((a) => selectedIds.has(a.id));
+  const someSelected = filteredAssets.some((a) => selectedIds.has(a.id));
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredAssets.map((a) => a.id)));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
 
   const handleOpenModal = (asset?: DigitalAsset) => {
     if (asset) {
@@ -155,6 +205,125 @@ export default function Assets() {
   const handleCloseHealthCheckModal = () => {
     setShowHealthCheckModal(false);
     setHealthCheckAsset(null);
+  };
+
+  const handleOpenBulkHeirModal = () => {
+    setBulkHeirChain([]);
+    setShowBulkHeirModal(true);
+  };
+
+  const handleCloseBulkHeirModal = () => {
+    setShowBulkHeirModal(false);
+    setBulkHeirChain([]);
+  };
+
+  const handleOpenBulkTypeModal = () => {
+    setBulkType('social_media');
+    setShowBulkTypeModal(true);
+  };
+
+  const handleCloseBulkTypeModal = () => {
+    setShowBulkTypeModal(false);
+  };
+
+  const handleBulkHeirSubmit = () => {
+    if (selectedIds.size === 0) return;
+    bulkUpdateHeir(Array.from(selectedIds), bulkHeirChain);
+    handleClearSelection();
+    handleCloseBulkHeirModal();
+  };
+
+  const handleBulkTypeSubmit = () => {
+    if (selectedIds.size === 0) return;
+    bulkUpdateType(Array.from(selectedIds), bulkType);
+    handleClearSelection();
+    handleCloseBulkTypeModal();
+  };
+
+  const handleExportCSV = () => {
+    if (selectedIds.size === 0) return;
+
+    const exportAssets = selectedAssets;
+    const heirMap = new Map(heirs.map((h) => [h.id, h.name]));
+
+    const headers = [
+      '资产ID',
+      '资产名称',
+      '资产类型',
+      '用户名/账号',
+      '网址',
+      '描述',
+      '估值(元)',
+      '货币',
+      '第一顺位继承人',
+      '继承链',
+      '移交说明',
+      '状态',
+      '创建时间',
+      '上次验证时间',
+      '验证周期',
+    ];
+
+    const rows = exportAssets.map((asset) => {
+      const heirName = asset.heirChain[0]
+        ? heirMap.get(asset.heirChain[0]) || '未知'
+        : '未分配';
+      const chainNames = asset.heirChain
+        .map((id) => heirMap.get(id) || '未知')
+        .join(' > ');
+      return [
+        asset.id,
+        asset.name,
+        ASSET_TYPE_LABELS[asset.type],
+        asset.username || '',
+        asset.url || '',
+        (asset.description || '').replace(/\n/g, ' '),
+        asset.value?.toString() || '0',
+        asset.currency || 'CNY',
+        heirName,
+        chainNames,
+        (asset.transferInstructions || '').replace(/\n/g, ' '),
+        asset.status,
+        formatDate(asset.createdAt),
+        asset.lastVerifiedAt ? formatDate(asset.lastVerifiedAt) : '未验证',
+        HEALTH_CHECK_PERIOD_LABELS[asset.healthCheckPeriod],
+      ];
+    });
+
+    const csvContent =
+      '\uFEFF' +
+      [headers, ...rows]
+        .map((row) =>
+          row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')
+        )
+        .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.download = `资产清单_${timestamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    const assetNames = exportAssets.map((a) => a.name).join('、');
+    addAuditLog({
+      action: 'bulk_export_csv',
+      description: `批量导出 ${exportAssets.length} 项资产清单：${assetNames}`,
+      resourceType: 'asset',
+      resourceId: Array.from(selectedIds).join(','),
+    });
+
+    addNotification({
+      type: 'success',
+      title: '导出成功',
+      message: `已成功导出 ${exportAssets.length} 项资产的清单`,
+    });
+
+    handleClearSelection();
   };
 
   const handleHealthCheckSubmit = (e: React.FormEvent) => {
@@ -225,6 +394,11 @@ export default function Assets() {
   const handleDelete = (id: string) => {
     if (confirm('确定要删除这个数字资产吗？')) {
       deleteAsset(id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -235,6 +409,23 @@ export default function Assets() {
   };
 
   const sortedHeirs = [...heirs].sort((a, b) => a.priority - b.priority);
+
+  const selectedTypeBreakdown = useMemo(() => {
+    const counts = new Map<AssetType, number>();
+    selectedAssets.forEach((a) => {
+      counts.set(a.type, (counts.get(a.type) || 0) + 1);
+    });
+    return Array.from(counts.entries());
+  }, [selectedAssets]);
+
+  const selectedHeirBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    selectedAssets.forEach((a) => {
+      const heirId = a.heirChain[0] || 'none';
+      counts.set(heirId, (counts.get(heirId) || 0) + 1);
+    });
+    return Array.from(counts.entries());
+  }, [selectedAssets]);
 
   return (
     <div className="space-y-6">
@@ -261,6 +452,85 @@ export default function Assets() {
           </div>
         </div>
 
+      {selectedIds.size > 0 && (
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
+                <CheckSquare className="w-6 h-6 text-indigo-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-indigo-900">
+                    已选择 <span className="text-2xl">{selectedIds.size}</span> 项资产
+                  </h3>
+                  <span className="text-sm text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
+                    批量操作模式
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedTypeBreakdown.length > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs text-gray-600">
+                      <Layers className="w-3.5 h-3.5" />
+                      {selectedTypeBreakdown.map(([type, count], idx) => (
+                      <span key={type}>
+                        {idx > 0 && '、'}
+                        {ASSET_TYPE_LABELS[type]} {count}项
+                      </span>
+                    ))}
+                    </span>
+                  )}
+                  {selectedHeirBreakdown.length > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs text-gray-600">
+                      <Users className="w-3.5 h-3.5" />
+                      {selectedHeirBreakdown.map(([heirId, count], idx) => {
+                        const name = heirId === 'none' ? '未分配' : getHeirName(heirId);
+                        return (
+                          <span key={heirId}>
+                            {idx > 0 && '、'}
+                            {name} {count}项
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleOpenBulkHeirModal}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <Users className="w-4 h-4" />
+                分配继承人
+              </button>
+              <button
+                onClick={handleOpenBulkTypeModal}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+              >
+                <Tag className="w-4 h-4" />
+                修改分类
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                导出CSV
+              </button>
+              <button
+                onClick={handleClearSelection}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+                取消选择
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -273,6 +543,32 @@ export default function Assets() {
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
+          {filteredAssets.length > 0 && (
+            <button
+              onClick={handleToggleSelectAll}
+              className={cn(
+                'flex items-center gap-2 px-3 px-4 py-2 rounded-lg border transition-colors shrink-0',
+                allSelected
+                  ? 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200'
+                  : someSelected
+                  ? 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              )}
+            >
+              {allSelected ? (
+                <CheckSquare className="w-4 h-4" />
+              ) : someSelected ? (
+                <Square className="w-4 h-4" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              <span className="text-sm font-medium">
+                {allSelected ? '取消全选' : someSelected ? '部分选中' : '全选'}
+              </span>
+              <span className="text-xs text-gray-500">({selectedIds.size}/{filteredAssets.length})
+              </span>
+            </button>
+          )}
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setFilterType('all')}
@@ -330,6 +626,7 @@ export default function Assets() {
               asset.healthCheckPeriod,
               asset.customPeriodDays
             );
+            const isSelected = selectedIds.has(asset.id);
 
             const getStatusIcon = () => {
               switch (healthStatus) {
@@ -348,13 +645,32 @@ export default function Assets() {
               <div
                 key={asset.id}
                 className={cn(
-                  'bg-white rounded-2xl p-5 shadow-sm border hover:shadow-md transition-shadow',
-                  healthStatus === 'overdue' ? 'border-red-200' :
-                  healthStatus === 'warning' ? 'border-amber-200' :
-                  'border-gray-100'
+                  'bg-white rounded-2xl p-5 shadow-sm border hover:shadow-md transition-all relative',
+                  isSelected
+                    ? 'border-indigo-400 ring-2 ring-indigo-200 shadow-indigo-100'
+                    : healthStatus === 'overdue' ? 'border-red-200' :
+                    healthStatus === 'warning' ? 'border-amber-200' :
+                    'border-gray-100'
                 )}
               >
-                <div className="flex items-start justify-between mb-4">
+                <button
+                  onClick={() => handleToggleSelect(asset.id)}
+                  className={cn(
+                    'absolute top-3 left-3 p-1.5 rounded-lg transition-all z-10',
+                    isSelected
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                      : 'bg-white/80 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 border border-gray-200'
+                  )}
+                  title={isSelected ? '取消选中' : '选中'}
+                >
+                  {isSelected ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <Square className="w-4 h-4" />
+                  )}
+                </button>
+
+                <div className="flex items-start justify-between mb-4 pl-10">
                   <div className="flex items-center gap-3">
                     <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', typeColors[asset.type])}>
                       <Icon className="w-6 h-6" />
@@ -366,27 +682,39 @@ export default function Assets() {
                   </div>
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => handleOpenHealthCheckModal(asset)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenHealthCheckModal(asset);
+                      }}
                       className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="健康检查设置"
                     >
                       <Settings className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleVerifyAsset(asset.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleVerifyAsset(asset.id);
+                      }}
                       className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                       title="标记已验证"
                     >
                       <ShieldCheck className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleOpenModal(asset)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenModal(asset);
+                      }}
                       className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(asset.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(asset.id);
+                      }}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -797,6 +1125,217 @@ export default function Assets() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showBulkHeirModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">批量分配继承人</h2>
+                <p className="text-sm text-gray-500 mt-1">为选中的 {selectedIds.size} 项资产设置继承顺位链</p>
+              </div>
+              <button
+                onClick={handleCloseBulkHeirModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-indigo-50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <Users className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-indigo-900">
+                      将影响 {selectedIds.size} 项资产的继承人设置</p>
+                    <p className="text-sm text-indigo-600">
+                      所有选中资产的继承链将被统一覆盖</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">继承顺位链</label>
+                <p className="text-xs text-gray-500 mb-3">
+                  按顺位指定继承人，第一顺位无法继承时自动流转至下一顺位
+                </p>
+                {bulkHeirChain.length === 0 && (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg mb-3">
+                    未选择继承人时，所有选中资产将被设置为「未分配」状态
+                  </p>
+                )}
+                {bulkHeirChain.map((chainHeirId, idx) => {
+                  const priorityLabel = idx === 0 ? '第一顺位' : `第${idx + 1}顺位（兜底）`;
+                  const priorityColor = idx === 0 ? 'text-emerald-600' : 'text-gray-500';
+                  return (
+                    <div key={idx} className="flex items-center gap-2 mb-2">
+                      <span className={cn('text-xs font-medium w-20 shrink-0', priorityColor)}>
+                        {priorityLabel}
+                      </span>
+                      <select
+                        value={chainHeirId}
+                        onChange={(e) => {
+                          const newChain = [...bulkHeirChain];
+                          newChain[idx] = e.target.value;
+                          setBulkHeirChain(newChain);
+                        }}
+                        className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">选择继承人</option>
+                        {sortedHeirs
+                          .filter((h) => h.id !== chainHeirId && !bulkHeirChain.includes(h.id))
+                          .map((heir) => (
+                            <option key={heir.id} value={heir.id}>
+                              {heir.name}（{RELATIONSHIP_LABELS[heir.relationship]}）
+                            </option>
+                          ))}
+                      </select>
+                      {bulkHeirChain.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newChain = bulkHeirChain.filter((_, i) => i !== idx);
+                            setBulkHeirChain(newChain);
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <MinusCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {bulkHeirChain.length < heirs.length && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkHeirChain([...bulkHeirChain, '']);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    添加顺位继承人
+                  </button>
+                )}
+                {heirs.length === 0 && (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+                    暂无继承人，请先在继承人管理中添加
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseBulkHeirModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkHeirSubmit}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  确认分配 ({selectedIds.size} 项)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkTypeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">批量修改分类</h2>
+                <p className="text-sm text-gray-500 mt-1">为选中的 {selectedIds.size} 项资产统一设置资产类型</p>
+              </div>
+              <button
+                onClick={handleCloseBulkTypeModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-purple-50 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <Tag className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-purple-900">将修改 {selectedIds.size} 项资产的分类</p>
+                    <p className="text-sm text-purple-600">所有选中资产的类型将被统一覆盖</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">选择新的资产分类</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(Object.keys(ASSET_TYPE_LABELS) as AssetType[]).map((type) => {
+                    const Icon = typeIcons[type];
+                    const isSelected = bulkType === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setBulkType(type)}
+                        className={cn(
+                          'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
+                          isSelected
+                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-700 hover:bg-gray-50'
+                        )}
+                      >
+                        <div className={cn(
+                          'w-10 h-10 rounded-lg flex items-center justify-center',
+                          isSelected ? typeColors[type] : 'bg-gray-100 text-gray-500'
+                        )}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-medium">{ASSET_TYPE_LABELS[type]}</p>
+                          <p className="text-xs text-gray-500">选择此分类</p>
+                        </div>
+                        {isSelected && (
+                          <div className="ml-auto">
+                            <Check className="w-5 h-5 text-purple-600" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseBulkTypeModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkTypeSubmit}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  确认修改 ({selectedIds.size} 项)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

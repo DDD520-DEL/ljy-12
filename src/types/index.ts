@@ -52,7 +52,10 @@ export type AuditActionType =
   | 'witness_removed_from_group'
   | 'witness_approval_submitted'
   | 'approval_group_completed'
-  | 'will_execution_advanced';
+  | 'will_execution_advanced'
+  | 'bulk_heir_assigned'
+  | 'bulk_type_updated'
+  | 'bulk_export_csv';
 
 export interface DigitalAsset {
   id: string;

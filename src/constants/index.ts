@@ -86,6 +86,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   witness_approval_submitted: '提交审批意见',
   approval_group_completed: '审批组完成',
   will_execution_advanced: '遗嘱执行推进',
+  bulk_heir_assigned: '批量分配继承人',
+  bulk_type_updated: '批量修改分类',
+  bulk_export_csv: '批量导出资产清单',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {

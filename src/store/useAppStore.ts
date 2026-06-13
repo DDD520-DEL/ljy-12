@@ -59,6 +59,8 @@ interface AppState {
   generateHealthCheckReminders: () => void;
   getOverdueAssets: () => DigitalAsset[];
   getWarningAssets: () => DigitalAsset[];
+  bulkUpdateHeir: (assetIds: string[], heirChain: string[]) => void;
+  bulkUpdateType: (assetIds: string[], type: AssetType) => void;
 
   addHeir: (heir: Omit<Heir, 'id' | 'createdAt' | 'isVerified' | 'assignedAssets' | 'priority'>) => void;
   updateHeir: (id: string, updates: Partial<Heir>) => void;
@@ -653,6 +655,73 @@ export const useAppStore = create<AppState>()(
             asset.reminderRule.daysBefore
           );
           return status === 'warning';
+        });
+      },
+
+      bulkUpdateHeir: (assetIds, heirChain) => {
+        const now = new Date().toISOString();
+        const heirId = heirChain.length > 0 ? heirChain[0] : undefined;
+        const assets = get().assets.filter((a) => assetIds.includes(a.id));
+        const assetNames = assets.map((a) => a.name).join('、');
+
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            assetIds.includes(a.id)
+              ? { ...a, heirChain, heirId, updatedAt: now }
+              : a
+          ),
+        }));
+
+        const heirName = heirId ? get().heirs.find((h) => h.id === heirId)?.name : '未分配';
+        get().addAuditLog({
+          action: 'bulk_heir_assigned',
+          description: `批量为 ${assetIds.length} 项资产分配继承人「${heirName || '未分配'}」：${assetNames}`,
+          resourceType: 'asset',
+          resourceId: assetIds.join(','),
+          newValue: JSON.stringify({ heirChain, heirId }),
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '批量分配成功',
+          message: `已为 ${assetIds.length} 项资产分配继承人「${heirName || '未分配'}」`,
+        });
+      },
+
+      bulkUpdateType: (assetIds, type) => {
+        const now = new Date().toISOString();
+        const assets = get().assets.filter((a) => assetIds.includes(a.id));
+        const assetNames = assets.map((a) => a.name).join('、');
+
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            assetIds.includes(a.id)
+              ? { ...a, type, updatedAt: now }
+              : a
+          ),
+        }));
+
+        const typeLabels: Record<AssetType, string> = {
+          social_media: '社交媒体',
+          cloud_storage: '云存储',
+          crypto_wallet: '加密货币钱包',
+          subscription: '订阅服务',
+          email: '电子邮箱',
+          other: '其他',
+        };
+
+        get().addAuditLog({
+          action: 'bulk_type_updated',
+          description: `批量修改 ${assetIds.length} 项资产分类为「${typeLabels[type]}」：${assetNames}`,
+          resourceType: 'asset',
+          resourceId: assetIds.join(','),
+          newValue: type,
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '批量修改成功',
+          message: `已将 ${assetIds.length} 项资产分类修改为「${typeLabels[type]}」`,
         });
       },
 
