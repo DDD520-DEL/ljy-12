@@ -52,6 +52,7 @@ export interface DigitalAsset {
   value?: number;
   currency?: string;
   heirId?: string;
+  heirChain: string[];
   transferInstructions?: string;
   status: AssetStatus;
   createdAt: string;
@@ -73,6 +74,7 @@ export interface Heir {
   isVerified: boolean;
   createdAt: string;
   assignedAssets: string[];
+  priority: number;
 }
 
 export interface TriggerCondition {

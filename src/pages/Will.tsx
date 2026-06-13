@@ -17,12 +17,18 @@ import {
   Bell,
   ArrowRight,
   Lock,
+  FolderKanban,
+  User,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
   TRIGGER_TYPE_LABELS,
   WILL_STATUS_LABELS,
   WILL_STATUS_COLORS,
+  ASSET_TYPE_LABELS,
+  RELATIONSHIP_LABELS,
   DEFAULT_INACTIVITY_DAYS,
   formatDate,
   daysSince,
@@ -421,6 +427,81 @@ export default function Will() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <FolderKanban className="w-5 h-5 text-emerald-500" />
+          资产分配预览
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">以下为各项资产的继承顺位链，当第一顺位无法继承时将自动流转</p>
+        {assets.length === 0 ? (
+          <div className="text-center py-8">
+            <FolderKanban className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">暂无数字资产</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {assets.map((asset) => (
+              <div key={asset.id} className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FolderKanban className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-900 text-sm">{asset.name}</span>
+                    <span className="text-xs text-gray-500 bg-white px-1.5 py-0.5 rounded">
+                      {ASSET_TYPE_LABELS[asset.type]}
+                    </span>
+                  </div>
+                  {asset.value !== undefined && asset.value > 0 && (
+                    <span className="text-sm font-medium text-emerald-600">
+                      ¥{asset.value.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {asset.heirChain.length > 0 ? (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {asset.heirChain.map((chainHeirId, idx) => {
+                      const chainHeir = heirs.find((h) => h.id === chainHeirId);
+                      if (!chainHeir) return null;
+                      const isFirst = idx === 0;
+                      return (
+                        <span key={chainHeirId} className="inline-flex items-center gap-1">
+                          {idx > 0 && <ArrowRight className="w-3 h-3 text-gray-300" />}
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium',
+                              isFirst
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-gray-100 text-gray-600'
+                            )}
+                          >
+                            <User className="w-3 h-3" />
+                            {chainHeir.name}
+                            <span className={cn(
+                              'ml-0.5 px-1 py-0.5 rounded text-[10px]',
+                              isFirst
+                                ? 'bg-emerald-200 text-emerald-800'
+                                : 'bg-gray-200 text-gray-500'
+                            )}>
+                              第{idx + 1}顺位
+                            </span>
+                          </span>
+                          {!isFirst && (
+                            <span className="text-[10px] text-gray-400">兜底</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                    未分配继承人
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-2xl p-6 text-white">

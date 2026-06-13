@@ -12,6 +12,8 @@ import {
   AlertCircle,
   ShieldCheck,
   Calendar,
+  User,
+  ArrowRight,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -43,6 +45,7 @@ export default function Dashboard() {
 
   const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
   const assignedAssets = assets.filter((a) => a.heirId).length;
+  const assetsWithFallback = assets.filter((a) => a.heirChain.length > 1).length;
   const verifiedWitnessesCount = witnesses.filter((w) => w.verificationStatus === 'verified').length;
   const daysInactive = will ? daysSince(will.lastActiveAt) : 0;
   const inactivityThreshold = will?.triggerCondition.inactivityDays || 180;
@@ -77,7 +80,7 @@ export default function Dashboard() {
       value: assets.length,
       icon: FolderKanban,
       color: 'from-blue-500 to-blue-600',
-      subtitle: `已分配 ${assignedAssets} 项`,
+      subtitle: `已分配 ${assignedAssets} 项，${assetsWithFallback} 项设兜底`,
       link: '/assets',
     },
     {
@@ -359,6 +362,63 @@ export default function Dashboard() {
               </div>
             </Link>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">资产概览</h2>
+          <Link to="/assets" className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+            查看全部 <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+        <div className="space-y-3">
+          {assets.slice(0, 5).map((asset) => (
+            <div key={asset.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-sm text-gray-900">{asset.name}</span>
+                  <span className="text-xs text-gray-500">{ASSET_TYPE_LABELS[asset.type]}</span>
+                  {asset.value !== undefined && asset.value > 0 && (
+                    <span className="text-xs font-medium text-emerald-600 ml-auto">
+                      ¥{asset.value.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {asset.heirChain.length > 0 ? (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {asset.heirChain.map((chainHeirId, idx) => {
+                      const chainHeir = heirs.find((h) => h.id === chainHeirId);
+                      if (!chainHeir) return null;
+                      return (
+                        <span key={chainHeirId} className="inline-flex items-center gap-0.5">
+                          {idx > 0 && <ArrowRight className="w-3 h-3 text-gray-300" />}
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs',
+                              idx === 0
+                                ? 'bg-emerald-100 text-emerald-700 font-medium'
+                                : 'bg-gray-100 text-gray-500'
+                            )}
+                          >
+                            <User className="w-3 h-3" />
+                            {chainHeir.name}
+                          </span>
+                        </span>
+                      );
+                    })}
+                    {asset.heirChain.length > 1 && (
+                      <span className="text-[10px] text-gray-400">
+                        ({asset.heirChain.length}级继承链)
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-amber-600">未分配继承人</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

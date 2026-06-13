@@ -49,9 +49,10 @@ interface AppState {
   getOverdueAssets: () => DigitalAsset[];
   getWarningAssets: () => DigitalAsset[];
 
-  addHeir: (heir: Omit<Heir, 'id' | 'createdAt' | 'isVerified' | 'assignedAssets'>) => void;
+  addHeir: (heir: Omit<Heir, 'id' | 'createdAt' | 'isVerified' | 'assignedAssets' | 'priority'>) => void;
   updateHeir: (id: string, updates: Partial<Heir>) => void;
   deleteHeir: (id: string) => void;
+  reorderHeirs: (heirIds: string[]) => void;
 
   createWill: (will: Partial<DigitalWill>) => void;
   updateWill: (updates: Partial<DigitalWill>) => void;
@@ -102,6 +103,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 0,
     currency: 'CNY',
     heirId: 'heir-001',
+    heirChain: ['heir-001', 'heir-002'],
     transferInstructions: '将账号密码告知配偶，由其继续使用或处理',
     status: 'active',
     createdAt: new Date('2024-01-15').toISOString(),
@@ -120,6 +122,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 500,
     currency: 'CNY',
     heirId: 'heir-002',
+    heirChain: ['heir-002', 'heir-003'],
     transferInstructions: '将账号移交子女，保留家庭记忆',
     status: 'active',
     createdAt: new Date('2024-02-10').toISOString(),
@@ -138,6 +141,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 150000,
     currency: 'CNY',
     heirId: 'heir-001',
+    heirChain: ['heir-001', 'heir-002', 'heir-003'],
     transferInstructions: '私钥存储在银行保险柜中，需律师见证下取出',
     status: 'active',
     createdAt: new Date('2024-03-05').toISOString(),
@@ -156,6 +160,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 200,
     currency: 'CNY',
     heirId: 'heir-002',
+    heirChain: ['heir-002'],
     transferInstructions: '可继续使用或取消订阅',
     status: 'active',
     createdAt: new Date('2024-03-20').toISOString(),
@@ -173,6 +178,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 0,
     currency: 'CNY',
     heirId: 'heir-001',
+    heirChain: ['heir-001', 'heir-003'],
     transferInstructions: '由配偶处理所有邮件，通知重要联系人',
     status: 'active',
     createdAt: new Date('2024-04-01').toISOString(),
@@ -191,6 +197,7 @@ const createInitialAssets = (): DigitalAsset[] => [
     value: 0,
     currency: 'CNY',
     heirId: 'heir-002',
+    heirChain: ['heir-002', 'heir-001'],
     transferInstructions: '开源项目可由感兴趣的子女继续维护',
     status: 'active',
     createdAt: new Date('2024-05-10').toISOString(),
@@ -211,6 +218,7 @@ const createInitialHeirs = (): Heir[] => [
     isVerified: true,
     createdAt: new Date('2024-01-10').toISOString(),
     assignedAssets: ['asset-001', 'asset-003', 'asset-005'],
+    priority: 1,
   },
   {
     id: 'heir-002',
@@ -222,6 +230,7 @@ const createInitialHeirs = (): Heir[] => [
     isVerified: true,
     createdAt: new Date('2024-01-12').toISOString(),
     assignedAssets: ['asset-002', 'asset-004', 'asset-006'],
+    priority: 2,
   },
   {
     id: 'heir-003',
@@ -233,6 +242,7 @@ const createInitialHeirs = (): Heir[] => [
     isVerified: false,
     createdAt: new Date('2024-02-01').toISOString(),
     assignedAssets: [],
+    priority: 3,
   },
 ];
 
@@ -594,11 +604,16 @@ export const useAppStore = create<AppState>()(
 
       addHeir: (heir) => {
         const now = new Date().toISOString();
+        const currentHeirs = get().heirs;
+        const maxPriority = currentHeirs.length > 0
+          ? Math.max(...currentHeirs.map((h) => h.priority))
+          : 0;
         const newHeir: Heir = {
           ...heir,
           id: generateId(),
           isVerified: false,
           assignedAssets: [],
+          priority: maxPriority + 1,
           createdAt: now,
         };
         set((state) => ({ heirs: [...state.heirs, newHeir] }));
@@ -618,9 +633,13 @@ export const useAppStore = create<AppState>()(
 
       deleteHeir: (id) => {
         const heir = get().heirs.find((h) => h.id === id);
-        set((state) => ({
-          heirs: state.heirs.filter((h) => h.id !== id),
-        }));
+        set((state) => {
+          const updatedHeirs = state.heirs
+            .filter((h) => h.id !== id)
+            .sort((a, b) => a.priority - b.priority)
+            .map((h, index) => ({ ...h, priority: index + 1 }));
+          return { heirs: updatedHeirs };
+        });
         if (heir) {
           get().addAuditLog({
             action: 'heir_removed',
@@ -629,6 +648,21 @@ export const useAppStore = create<AppState>()(
             resourceId: id,
           });
         }
+      },
+
+      reorderHeirs: (heirIds) => {
+        set((state) => {
+          const reordered = heirIds.map((id, index) => {
+            const heir = state.heirs.find((h) => h.id === id);
+            return heir ? { ...heir, priority: index + 1 } : null;
+          }).filter(Boolean) as Heir[];
+          return { heirs: reordered };
+        });
+        get().addAuditLog({
+          action: 'heir_added',
+          description: '继承人顺位已调整',
+          resourceType: 'heir',
+        });
       },
 
       createWill: (will) => {

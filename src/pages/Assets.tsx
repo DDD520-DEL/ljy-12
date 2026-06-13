@@ -19,10 +19,14 @@ import {
   AlertCircle,
   Settings,
   ShieldCheck,
+  ChevronRight,
+  PlusCircle,
+  MinusCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
   ASSET_TYPE_LABELS,
+  RELATIONSHIP_LABELS,
   getHealthCheckStatus,
   getDaysSinceLastVerification,
   getNextVerificationDate,
@@ -78,6 +82,7 @@ export default function Assets() {
     value: '',
     currency: 'CNY',
     heirId: '',
+    heirChain: [] as string[],
     transferInstructions: '',
   });
   const [healthCheckForm, setHealthCheckForm] = useState({
@@ -109,6 +114,7 @@ export default function Assets() {
         value: asset.value?.toString() || '',
         currency: asset.currency || 'CNY',
         heirId: asset.heirId || '',
+        heirChain: asset.heirChain || [],
         transferInstructions: asset.transferInstructions || '',
       });
     } else {
@@ -122,6 +128,7 @@ export default function Assets() {
         value: '',
         currency: 'CNY',
         heirId: '',
+        heirChain: [],
         transferInstructions: '',
       });
     }
@@ -201,16 +208,16 @@ export default function Assets() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const heirId = formData.heirChain.length > 0 ? formData.heirChain[0] : '';
+    const submitData = {
+      ...formData,
+      heirId,
+      value: formData.value ? Number(formData.value) : undefined,
+    };
     if (editingAsset) {
-      updateAsset(editingAsset.id, {
-        ...formData,
-        value: formData.value ? Number(formData.value) : undefined,
-      });
+      updateAsset(editingAsset.id, submitData);
     } else {
-      addAsset({
-        ...formData,
-        value: formData.value ? Number(formData.value) : undefined,
-      });
+      addAsset(submitData);
     }
     handleCloseModal();
   };
@@ -226,6 +233,8 @@ export default function Assets() {
     const heir = heirs.find((h) => h.id === heirId);
     return heir?.name || '未分配';
   };
+
+  const sortedHeirs = [...heirs].sort((a, b) => a.priority - b.priority);
 
   return (
     <div className="space-y-6">
@@ -430,10 +439,17 @@ export default function Assets() {
                 )}
 
                 <div className="pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <User className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-600">{getHeirName(asset.heirId)}</span>
+                      <span className="text-sm font-medium text-gray-600">
+                        {asset.heirChain.length > 0 ? getHeirName(asset.heirChain[0]) : '未分配'}
+                      </span>
+                      {asset.heirChain.length > 0 && (
+                        <span className="text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                          第一顺位
+                        </span>
+                      )}
                     </div>
                     {asset.value !== undefined && asset.value > 0 && (
                       <span className="text-sm font-medium text-emerald-600">
@@ -441,6 +457,25 @@ export default function Assets() {
                       </span>
                     )}
                   </div>
+                  {asset.heirChain.length > 1 && (
+                    <div className="flex items-center gap-1 flex-wrap mb-2">
+                      <span className="text-xs text-gray-400">兜底：</span>
+                      {asset.heirChain.slice(1).map((chainHeirId, idx) => {
+                        const chainHeir = heirs.find((h) => h.id === chainHeirId);
+                        return (
+                          <span key={chainHeirId} className="inline-flex items-center gap-0.5">
+                            {idx > 0 && <ChevronRight className="w-3 h-3 text-gray-300" />}
+                            <span className="text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
+                              {chainHeir?.name || '未知'}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              第{idx + 2}顺位
+                            </span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="flex justify-between mt-2">
                     <p className="text-xs text-gray-400">
                       下次验证：{nextVerificationDate}
@@ -535,19 +570,69 @@ export default function Assets() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">继承人</label>
-                <select
-                  value={formData.heirId}
-                  onChange={(e) => setFormData({ ...formData, heirId: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                >
-                  <option value="">暂不分配</option>
-                  {heirs.map((heir) => (
-                    <option key={heir.id} value={heir.id}>
-                      {heir.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">继承顺位链</label>
+                <p className="text-xs text-gray-500 mb-3">
+                  按顺位指定继承人，第一顺位无法继承时自动流转至下一顺位
+                </p>
+                {formData.heirChain.map((chainHeirId, idx) => {
+                  const chainHeir = heirs.find((h) => h.id === chainHeirId);
+                  const priorityLabel = idx === 0 ? '第一顺位' : `第${idx + 1}顺位（兜底）`;
+                  const priorityColor = idx === 0 ? 'text-emerald-600' : 'text-gray-500';
+                  return (
+                    <div key={idx} className="flex items-center gap-2 mb-2">
+                      <span className={cn('text-xs font-medium w-20 shrink-0', priorityColor)}>
+                        {priorityLabel}
+                      </span>
+                      <select
+                        value={chainHeirId}
+                        onChange={(e) => {
+                          const newChain = [...formData.heirChain];
+                          newChain[idx] = e.target.value;
+                          setFormData({ ...formData, heirChain: newChain });
+                        }}
+                        className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">选择继承人</option>
+                        {sortedHeirs
+                          .filter((h) => h.id !== chainHeirId && !formData.heirChain.includes(h.id))
+                          .map((heir) => (
+                            <option key={heir.id} value={heir.id}>
+                              {heir.name}（{RELATIONSHIP_LABELS[heir.relationship]}）
+                            </option>
+                          ))}
+                      </select>
+                      {formData.heirChain.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newChain = formData.heirChain.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, heirChain: newChain });
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <MinusCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {formData.heirChain.length < heirs.length && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({ ...formData, heirChain: [...formData.heirChain, ''] });
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    添加兜底继承人
+                  </button>
+                )}
+                {heirs.length === 0 && (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+                    暂无继承人，请先在继承人管理中添加
+                  </p>
+                )}
               </div>
 
               <div>
