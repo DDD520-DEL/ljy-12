@@ -20,6 +20,9 @@ import type {
   SimulationNotifyTarget,
   SimulationTransferItem,
   SimulationSummary,
+  WitnessApprovalGroup,
+  WitnessApprovalDecision,
+  WillExecutionState,
 } from '@/types';
 import {
   generateId,
@@ -31,7 +34,6 @@ import {
   getHealthCheckStatus,
   getHealthCheckPeriodDays,
   addDaysToDate,
-  formatDate,
 } from '@/constants';
 
 interface AppState {
@@ -40,6 +42,7 @@ interface AppState {
   heirs: Heir[];
   will: DigitalWill | null;
   witnesses: Witness[];
+  approvalGroups: WitnessApprovalGroup[];
   auditLogs: AuditLogEntry[];
   notifications: Notification[];
 
@@ -74,6 +77,15 @@ interface AppState {
   updateWitness: (id: string, updates: Partial<Witness>) => void;
   deleteWitness: (id: string) => void;
   verifyWitness: (id: string) => void;
+
+  createApprovalGroup: (group: Omit<WitnessApprovalGroup, 'id' | 'createdAt' | 'updatedAt' | 'approvals' | 'status'>) => void;
+  updateApprovalGroup: (groupId: string, updates: Partial<Omit<WitnessApprovalGroup, 'id' | 'createdAt' | 'updatedAt'>>) => void;
+  deleteApprovalGroup: (groupId: string) => void;
+  assignWitnessToGroup: (groupId: string, witnessId: string) => void;
+  removeWitnessFromGroup: (groupId: string, witnessId: string) => void;
+  submitWitnessApproval: (groupId: string, witnessId: string, decision: WitnessApprovalDecision, comment?: string) => void;
+  getApprovalGroupProgress: (groupId: string) => { approved: number; required: number; total: number; percentage: number };
+  getWillExecutionState: () => WillExecutionState;
 
   addAuditLog: (entry: {
     action: AuditActionType;
@@ -286,6 +298,31 @@ const createInitialWitnesses = (): Witness[] => [
   },
 ];
 
+const createInitialApprovalGroups = (): WitnessApprovalGroup[] => [
+  {
+    id: 'group-001',
+    name: '律师审批组',
+    description: '由执业律师组成的审批组，负责法律合规性审核',
+    witnessIds: ['witness-001'],
+    requiredApprovals: 1,
+    approvals: [],
+    status: 'pending',
+    createdAt: new Date('2024-02-10').toISOString(),
+    updatedAt: new Date('2024-02-10').toISOString(),
+  },
+  {
+    id: 'group-002',
+    name: '亲友见证组',
+    description: '由亲友见证人组成的审批组，确认遗嘱执行意愿',
+    witnessIds: ['witness-002'],
+    requiredApprovals: 1,
+    approvals: [],
+    status: 'pending',
+    createdAt: new Date('2024-03-01').toISOString(),
+    updatedAt: new Date('2024-03-01').toISOString(),
+  },
+];
+
 const createInitialWill = (): DigitalWill => ({
   id: 'will-001',
   ownerId: 'user-001',
@@ -421,6 +458,7 @@ export const useAppStore = create<AppState>()(
       heirs: createInitialHeirs(),
       will: createInitialWill(),
       witnesses: createInitialWitnesses(),
+      approvalGroups: createInitialApprovalGroups(),
       auditLogs: createInitialAuditLogs(),
       notifications: createInitialNotifications(),
 
@@ -853,6 +891,226 @@ export const useAppStore = create<AppState>()(
             resourceId: id,
           });
         }
+      },
+
+      createApprovalGroup: (group) => {
+        const now = new Date().toISOString();
+        const newGroup: WitnessApprovalGroup = {
+          ...group,
+          id: generateId(),
+          approvals: group.witnessIds.map((wId) => ({
+            witnessId: wId,
+            decision: 'pending',
+          })),
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ approvalGroups: [...state.approvalGroups, newGroup] }));
+        get().addAuditLog({
+          action: 'approval_group_created',
+          description: `创建审批组：${group.name}`,
+          resourceType: 'approval_group',
+          resourceId: newGroup.id,
+        });
+      },
+
+      updateApprovalGroup: (groupId, updates) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          approvalGroups: state.approvalGroups.map((g) =>
+            g.id === groupId ? { ...g, ...updates, updatedAt: now } : g
+          ),
+        }));
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        if (group) {
+          get().addAuditLog({
+            action: 'approval_group_updated',
+            description: `更新审批组：${group.name}`,
+            resourceType: 'approval_group',
+            resourceId: groupId,
+          });
+        }
+      },
+
+      deleteApprovalGroup: (groupId) => {
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        set((state) => ({
+          approvalGroups: state.approvalGroups.filter((g) => g.id !== groupId),
+        }));
+        if (group) {
+          get().addAuditLog({
+            action: 'approval_group_deleted',
+            description: `删除审批组：${group.name}`,
+            resourceType: 'approval_group',
+            resourceId: groupId,
+          });
+        }
+      },
+
+      assignWitnessToGroup: (groupId, witnessId) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          approvalGroups: state.approvalGroups.map((g) => {
+            if (g.id !== groupId) return g;
+            if (g.witnessIds.includes(witnessId)) return g;
+            return {
+              ...g,
+              witnessIds: [...g.witnessIds, witnessId],
+              approvals: [...g.approvals, { witnessId, decision: 'pending' }],
+              updatedAt: now,
+              status: 'pending',
+              completedAt: undefined,
+            };
+          }),
+        }));
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        const witness = get().witnesses.find((w) => w.id === witnessId);
+        if (group && witness) {
+          get().addAuditLog({
+            action: 'witness_assigned_to_group',
+            description: `将见证人「${witness.name}」分配到审批组「${group.name}」`,
+            resourceType: 'approval_group',
+            resourceId: groupId,
+            newValue: witnessId,
+          });
+        }
+      },
+
+      removeWitnessFromGroup: (groupId, witnessId) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          approvalGroups: state.approvalGroups.map((g) => {
+            if (g.id !== groupId) return g;
+            const newWitnessIds = g.witnessIds.filter((id) => id !== witnessId);
+            const newApprovals = g.approvals.filter((a) => a.witnessId !== witnessId);
+            const approvedCount = newApprovals.filter((a) => a.decision === 'approved').length;
+            const rejectedCount = newApprovals.filter((a) => a.decision === 'rejected').length;
+            let newStatus: WitnessApprovalGroup['status'] = 'pending';
+            if (newWitnessIds.length === 0) {
+              newStatus = 'pending';
+            } else if (approvedCount >= g.requiredApprovals) {
+              newStatus = 'approved';
+            } else if (rejectedCount > newWitnessIds.length - g.requiredApprovals) {
+              newStatus = 'rejected';
+            } else if (approvedCount > 0 || rejectedCount > 0) {
+              newStatus = 'partial';
+            }
+            return {
+              ...g,
+              witnessIds: newWitnessIds,
+              approvals: newApprovals,
+              updatedAt: now,
+              status: newStatus,
+              completedAt: newStatus === 'approved' || newStatus === 'rejected' ? now : undefined,
+            };
+          }),
+        }));
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        const witness = get().witnesses.find((w) => w.id === witnessId);
+        if (group && witness) {
+          get().addAuditLog({
+            action: 'witness_removed_from_group',
+            description: `从审批组「${group.name}」移除见证人「${witness.name}」`,
+            resourceType: 'approval_group',
+            resourceId: groupId,
+            previousValue: witnessId,
+          });
+        }
+      },
+
+      submitWitnessApproval: (groupId, witnessId, decision, comment) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          approvalGroups: state.approvalGroups.map((g) => {
+            if (g.id !== groupId) return g;
+            const newApprovals = g.approvals.map((a) =>
+              a.witnessId === witnessId
+                ? { ...a, decision, decidedAt: now, comment }
+                : a
+            );
+            const approvedCount = newApprovals.filter((a) => a.decision === 'approved').length;
+            const rejectedCount = newApprovals.filter((a) => a.decision === 'rejected').length;
+            let newStatus: WitnessApprovalGroup['status'] = g.status;
+            let completedAt = g.completedAt;
+            if (approvedCount >= g.requiredApprovals) {
+              newStatus = 'approved';
+              completedAt = now;
+            } else if (rejectedCount > g.witnessIds.length - g.requiredApprovals) {
+              newStatus = 'rejected';
+              completedAt = now;
+            } else if (approvedCount > 0 || rejectedCount > 0) {
+              newStatus = 'partial';
+            }
+            return {
+              ...g,
+              approvals: newApprovals,
+              status: newStatus,
+              updatedAt: now,
+              completedAt,
+            };
+          }),
+        }));
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        const witness = get().witnesses.find((w) => w.id === witnessId);
+        if (group && witness) {
+          get().addAuditLog({
+            action: 'witness_approval_submitted',
+            description: `见证人「${witness.name}」在审批组「${group.name}」提交了「${decision === 'approved' ? '同意' : decision === 'rejected' ? '拒绝' : '待定'}」意见${comment ? `：${comment}` : ''}`,
+            resourceType: 'approval_group',
+            resourceId: groupId,
+            newValue: decision,
+          });
+          if (group.status === 'approved' || group.status === 'rejected') {
+            get().addAuditLog({
+              action: 'approval_group_completed',
+              description: `审批组「${group.name}」已完成，结果：${group.status === 'approved' ? '通过' : '拒绝'}`,
+              resourceType: 'approval_group',
+              resourceId: groupId,
+              newValue: group.status,
+            });
+            const execState = get().getWillExecutionState();
+            if (execState.allGroupsApproved && get().will?.status === 'triggered') {
+              get().addAuditLog({
+                action: 'will_execution_advanced',
+                description: '所有审批组已通过，遗嘱可进入执行阶段',
+                resourceType: 'will',
+                resourceId: get().will?.id,
+              });
+              get().updateWill({ status: 'executing' });
+            }
+          }
+        }
+      },
+
+      getApprovalGroupProgress: (groupId) => {
+        const group = get().approvalGroups.find((g) => g.id === groupId);
+        if (!group) return { approved: 0, required: 0, total: 0, percentage: 0 };
+        const approved = group.approvals.filter((a) => a.decision === 'approved').length;
+        const total = group.witnessIds.length;
+        const required = group.requiredApprovals;
+        const percentage = total > 0 ? Math.min(100, Math.round((approved / required) * 100)) : 0;
+        return { approved, required, total, percentage };
+      },
+
+      getWillExecutionState: () => {
+        const groups = get().approvalGroups;
+        if (groups.length === 0) {
+          return {
+            allGroupsApproved: true,
+            canProceedToExecution: true,
+            overallProgress: 100,
+          };
+        }
+        const completedGroups = groups.filter((g) => g.status === 'approved').length;
+        const totalGroups = groups.length;
+        const allApproved = completedGroups === totalGroups;
+        const progress = totalGroups > 0 ? Math.round((completedGroups / totalGroups) * 100) : 100;
+        return {
+          allGroupsApproved: allApproved,
+          canProceedToExecution: allApproved,
+          overallProgress: progress,
+        };
       },
 
       addAuditLog: (entry) => {

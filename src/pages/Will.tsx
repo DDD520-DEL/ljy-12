@@ -9,19 +9,17 @@ import {
   Edit2,
   Trash2,
   X,
-  GripVertical,
   Play,
   Shield,
   Users,
   Scale,
-  Bell,
   ArrowRight,
   Lock,
   FolderKanban,
   User,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -30,25 +28,33 @@ import {
   WILL_STATUS_LABELS,
   WILL_STATUS_COLORS,
   ASSET_TYPE_LABELS,
-  RELATIONSHIP_LABELS,
   DEFAULT_INACTIVITY_DAYS,
   formatDate,
   daysSince,
+  APPROVAL_GROUP_STATUS_LABELS,
+  APPROVAL_GROUP_STATUS_COLORS,
+  WITNESS_APPROVAL_DECISION_LABELS,
+  WITNESS_APPROVAL_DECISION_COLORS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { TriggerType, ExecutionStep } from '@/types';
+import type { TriggerType, ExecutionStep, WitnessApprovalDecision } from '@/types';
 
 export default function Will() {
   const will = useAppStore((state) => state.will);
   const witnesses = useAppStore((state) => state.witnesses);
   const heirs = useAppStore((state) => state.heirs);
   const assets = useAppStore((state) => state.assets);
+  const approvalGroups = useAppStore((state) => state.approvalGroups);
   const updateWill = useAppStore((state) => state.updateWill);
   const activateWill = useAppStore((state) => state.activateWill);
   const triggerWill = useAppStore((state) => state.triggerWill);
   const addExecutionStep = useAppStore((state) => state.addExecutionStep);
   const updateExecutionStep = useAppStore((state) => state.updateExecutionStep);
   const removeExecutionStep = useAppStore((state) => state.removeExecutionStep);
+  const submitWitnessApproval = useAppStore((state) => state.submitWitnessApproval);
+  const getApprovalGroupProgress = useAppStore((state) => state.getApprovalGroupProgress);
+  const getWillExecutionState = useAppStore((state) => state.getWillExecutionState);
+  const addNotification = useAppStore((state) => state.addNotification);
 
   const [editingStep, setEditingStep] = useState<ExecutionStep | null>(null);
   const [showStepModal, setShowStepModal] = useState(false);
@@ -137,6 +143,18 @@ export default function Will() {
         ...will?.triggerCondition,
         lawyerApprovalRequired: required,
       },
+    });
+  };
+
+  const handleSubmitApproval = (groupId: string, witnessId: string, decision: WitnessApprovalDecision) => {
+    submitWitnessApproval(groupId, witnessId, decision);
+    const witness = witnesses.find((w) => w.id === witnessId);
+    addNotification({
+      type: decision === 'approved' ? 'success' : decision === 'rejected' ? 'error' : 'info',
+      title: '审批已提交',
+      message: witness
+        ? `「${witness.name}」已提交${decision === 'approved' ? '同意' : decision === 'rejected' ? '拒绝' : '待定'}意见`
+        : '审批意见已提交',
     });
   };
 
@@ -241,6 +259,162 @@ export default function Will() {
           </div>
         </div>
       </div>
+
+      {(will?.status === 'triggered' || will?.status === 'executing') && approvalGroups.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Shield className="w-5 h-5 text-cyan-500" />
+              加权审批进度
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">总体进度</span>
+              <span className="text-lg font-bold text-cyan-600">
+                {getWillExecutionState().overallProgress}%
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-6 overflow-hidden">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all duration-500',
+                getWillExecutionState().allGroupsApproved ? 'bg-green-500' : 'bg-cyan-500'
+              )}
+              style={{ width: `${getWillExecutionState().overallProgress}%` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {approvalGroups.map((group) => {
+              const progress = getApprovalGroupProgress(group.id);
+              const groupWitnesses = witnesses.filter((w) => group.witnessIds.includes(w.id));
+              return (
+                <div key={group.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-gray-900">{group.name}</h4>
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-xs font-medium',
+                            APPROVAL_GROUP_STATUS_COLORS[group.status]
+                          )}
+                        >
+                          {APPROVAL_GROUP_STATUS_LABELS[group.status]}
+                        </span>
+                      </div>
+                      {group.description && (
+                        <p className="text-xs text-gray-500 mt-0.5">{group.description}</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700">
+                      {progress.approved}/{progress.required}
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3 overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-300',
+                        group.status === 'approved' ? 'bg-green-500' :
+                        group.status === 'rejected' ? 'bg-red-500' : 'bg-cyan-500'
+                      )}
+                      style={{ width: `${progress.percentage}%` }}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {groupWitnesses.map((witness) => {
+                      const approval = group.approvals.find((a) => a.witnessId === witness.id);
+                      const decision = approval?.decision || 'pending';
+                      return (
+                        <div key={witness.id} className="flex items-center justify-between bg-white rounded-lg p-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className={cn(
+                              'w-7 h-7 rounded-full flex items-center justify-center',
+                              witness.isLawyer ? 'bg-purple-100' : 'bg-blue-100'
+                            )}>
+                              {witness.isLawyer ? (
+                                <Scale className="w-3.5 h-3.5 text-purple-600" />
+                              ) : (
+                                <Users className="w-3.5 h-3.5 text-blue-600" />
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-gray-800">{witness.name}</span>
+                              {witness.isLawyer && (
+                                <span className="ml-1 text-xs text-purple-600">律师</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1',
+                                WITNESS_APPROVAL_DECISION_COLORS[decision]
+                              )}
+                            >
+                              {decision === 'approved' ? (
+                                <ThumbsUp className="w-3 h-3" />
+                              ) : decision === 'rejected' ? (
+                                <ThumbsDown className="w-3 h-3" />
+                              ) : (
+                                <Clock className="w-3 h-3" />
+                              )}
+                              {WITNESS_APPROVAL_DECISION_LABELS[decision]}
+                            </span>
+                            {witness.verificationStatus === 'verified' && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleSubmitApproval(group.id, witness.id, 'approved')}
+                                  disabled={decision === 'approved'}
+                                  className={cn(
+                                    'p-1.5 rounded-md transition-colors',
+                                    decision === 'approved'
+                                      ? 'bg-green-100 text-green-600 cursor-default'
+                                      : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                                  )}
+                                  title="同意"
+                                >
+                                  <ThumbsUp className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleSubmitApproval(group.id, witness.id, 'rejected')}
+                                  disabled={decision === 'rejected'}
+                                  className={cn(
+                                    'p-1.5 rounded-md transition-colors',
+                                    decision === 'rejected'
+                                      ? 'bg-red-100 text-red-600 cursor-default'
+                                      : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                                  )}
+                                  title="拒绝"
+                                >
+                                  <ThumbsDown className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {getWillExecutionState().allGroupsApproved && (
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
+              <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-green-800">所有审批组已通过</p>
+                <p className="text-sm text-green-600">遗嘱执行流程已获得全部授权，可以开始资产移交</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">

@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -78,6 +78,40 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   asset_verified: '资产验证',
   healthcheck_reminder: '健康检查提醒',
   healthcheck_settings_updated: '健康检查设置更新',
+  approval_group_created: '创建审批组',
+  approval_group_updated: '更新审批组',
+  approval_group_deleted: '删除审批组',
+  witness_assigned_to_group: '分配见证人到组',
+  witness_removed_from_group: '从组移除见证人',
+  witness_approval_submitted: '提交审批意见',
+  approval_group_completed: '审批组完成',
+  will_execution_advanced: '遗嘱执行推进',
+};
+
+export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
+  pending: '待审批',
+  partial: '部分通过',
+  approved: '已通过',
+  rejected: '已拒绝',
+};
+
+export const APPROVAL_GROUP_STATUS_COLORS: Record<ApprovalGroupStatus, string> = {
+  pending: 'bg-amber-100 text-amber-700',
+  partial: 'bg-blue-100 text-blue-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+};
+
+export const WITNESS_APPROVAL_DECISION_LABELS: Record<WitnessApprovalDecision, string> = {
+  pending: '待决定',
+  approved: '同意',
+  rejected: '拒绝',
+};
+
+export const WITNESS_APPROVAL_DECISION_COLORS: Record<WitnessApprovalDecision, string> = {
+  pending: 'bg-gray-100 text-gray-600',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
 };
 
 export const HEALTH_CHECK_PERIOD_LABELS: Record<HealthCheckPeriod, string> = {

@@ -10,6 +10,10 @@ export type WillStatus = 'draft' | 'active' | 'triggered' | 'executing' | 'compl
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
+export type ApprovalGroupStatus = 'pending' | 'approved' | 'rejected' | 'partial';
+
+export type WitnessApprovalDecision = 'approved' | 'rejected' | 'pending';
+
 export type HealthCheckPeriod = '7_days' | '30_days' | '90_days' | '180_days' | '365_days' | 'custom';
 
 export type HealthCheckStatus = 'normal' | 'warning' | 'overdue' | 'never';
@@ -40,7 +44,15 @@ export type AuditActionType =
   | 'notification_sent'
   | 'asset_verified'
   | 'healthcheck_reminder'
-  | 'healthcheck_settings_updated';
+  | 'healthcheck_settings_updated'
+  | 'approval_group_created'
+  | 'approval_group_updated'
+  | 'approval_group_deleted'
+  | 'witness_assigned_to_group'
+  | 'witness_removed_from_group'
+  | 'witness_approval_submitted'
+  | 'approval_group_completed'
+  | 'will_execution_advanced';
 
 export interface DigitalAsset {
   id: string;
@@ -127,6 +139,32 @@ export interface Witness {
   barNumber?: string;
   firmName?: string;
   createdAt: string;
+}
+
+export interface WitnessApproval {
+  witnessId: string;
+  decision: WitnessApprovalDecision;
+  decidedAt?: string;
+  comment?: string;
+}
+
+export interface WitnessApprovalGroup {
+  id: string;
+  name: string;
+  description?: string;
+  witnessIds: string[];
+  requiredApprovals: number;
+  approvals: WitnessApproval[];
+  status: ApprovalGroupStatus;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface WillExecutionState {
+  allGroupsApproved: boolean;
+  canProceedToExecution: boolean;
+  overallProgress: number;
 }
 
 export interface AuditLogEntry {
