@@ -152,8 +152,11 @@ export const daysSince = (dateString: string): number => {
 };
 
 export const getHealthCheckPeriodDays = (period: HealthCheckPeriod, customDays?: number): number => {
-  if (period === 'custom' && customDays) {
-    return customDays;
+  if (period === 'custom') {
+    if (customDays && customDays > 0) {
+      return customDays;
+    }
+    return HEALTH_CHECK_PERIOD_DAYS[DEFAULT_HEALTH_CHECK_PERIOD];
   }
   return HEALTH_CHECK_PERIOD_DAYS[period];
 };
@@ -173,10 +176,11 @@ export const getHealthCheckStatus = (
 
   const daysSinceVerification = daysSince(lastVerifiedAt);
   const periodDays = getHealthCheckPeriodDays(period, customDays);
-  const reminderThreshold = periodDays - (reminderDays || DEFAULT_REMINDER_DAYS);
+  const reminderOffset = Math.min(reminderDays || DEFAULT_REMINDER_DAYS, Math.max(periodDays - 1, 1));
+  const reminderThreshold = periodDays - reminderOffset;
 
   if (daysSinceVerification >= periodDays) return 'overdue';
-  if (daysSinceVerification >= reminderThreshold) return 'warning';
+  if (daysSinceVerification >= reminderThreshold && reminderThreshold > 0) return 'warning';
   return 'normal';
 };
 

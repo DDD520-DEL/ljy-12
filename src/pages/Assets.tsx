@@ -26,6 +26,7 @@ import {
   getHealthCheckStatus,
   getDaysSinceLastVerification,
   getNextVerificationDate,
+  getHealthCheckPeriodDays,
   HEALTH_CHECK_STATUS_LABELS,
   HEALTH_CHECK_STATUS_COLORS,
   HEALTH_CHECK_PERIOD_LABELS,
@@ -153,16 +154,33 @@ export default function Assets() {
     e.preventDefault();
     if (!healthCheckAsset) return;
 
+    let periodDays: number;
+    if (healthCheckForm.period === 'custom') {
+      const customDays = parseInt(healthCheckForm.customDays);
+      if (!customDays || customDays < 1) {
+        alert('请输入有效的自定义周期天数（至少1天）');
+        return;
+      }
+      periodDays = customDays;
+    } else {
+      periodDays = getHealthCheckPeriodDays(healthCheckForm.period);
+    }
+
+    const reminderDays = Math.min(
+      Math.max(parseInt(healthCheckForm.reminderDays) || DEFAULT_REMINDER_DAYS, 1),
+      periodDays - 1
+    );
+
     const reminderRule: ReminderRule = {
       enabled: healthCheckForm.reminderEnabled,
-      daysBefore: parseInt(healthCheckForm.reminderDays) || DEFAULT_REMINDER_DAYS,
+      daysBefore: reminderDays,
       repeat: healthCheckForm.repeatReminder,
     };
 
     updateAssetHealthCheck(
       healthCheckAsset.id,
       healthCheckForm.period,
-      healthCheckForm.period === 'custom' ? parseInt(healthCheckForm.customDays) : undefined,
+      healthCheckForm.period === 'custom' ? periodDays : undefined,
       reminderRule
     );
 
