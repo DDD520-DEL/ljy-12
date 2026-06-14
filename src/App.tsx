@@ -9,6 +9,7 @@ import Will from "@/pages/Will";
 import WillTemplates from "@/pages/WillTemplates";
 import MFA from "@/pages/MFA";
 import Witnesses from "@/pages/Witnesses";
+import Executors from "@/pages/Executors";
 import AuditLog from "@/pages/AuditLog";
 import Simulation from "@/pages/Simulation";
 import DonationPlanning from "@/pages/DonationPlanning";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/simulation" element={<Simulation />} />
           <Route path="/mfa" element={<MFA />} />
           <Route path="/witnesses" element={<Witnesses />} />
+          <Route path="/executors" element={<Executors />} />
           <Route path="/audit" element={<AuditLog />} />
           <Route path="/donation" element={<DonationPlanning />} />
           <Route path="/heir-verification" element={<HeirVerificationCenter />} />

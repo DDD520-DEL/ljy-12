@@ -17,6 +17,7 @@ import {
   BadgeCheck,
   BarChart2,
   Network,
+  UserCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -37,6 +38,7 @@ const navItems = [
   { path: '/simulation', label: '沙箱模拟', icon: Sparkles },
   { path: '/mfa', label: '身份验证', icon: Shield },
   { path: '/witnesses', label: '见证授权', icon: Scale },
+  { path: '/executors', label: '执行人管理', icon: UserCheck },
   { path: '/audit', label: '审计日志', icon: History },
 ];
 

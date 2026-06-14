@@ -33,6 +33,14 @@ import {
   CheckCircle2,
   XCircle,
   BookTemplate,
+  UserCheck,
+  Bell,
+  FolderOpen,
+  Link2,
+  Unlink,
+  Info,
+  Building,
+  Award,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -62,6 +70,10 @@ import {
   DONATION_STATUS_COLORS,
   HEIR_VERIFICATION_STATUS_LABELS,
   HEIR_VERIFICATION_STATUS_COLORS,
+  EXECUTOR_STATUS_LABELS,
+  EXECUTOR_STATUS_COLORS,
+  EXECUTOR_PERMISSION_LABELS,
+  EXECUTOR_PERMISSION_DESCRIPTIONS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { TriggerType, ExecutionStep, WitnessApprovalDecision, Branch, BranchCondition, ConditionField, ConditionOperator } from '@/types';
@@ -71,6 +83,7 @@ export default function Will() {
   const witnesses = useAppStore((state) => state.witnesses);
   const heirs = useAppStore((state) => state.heirs);
   const assets = useAppStore((state) => state.assets);
+  const executors = useAppStore((state) => state.executors);
   const approvalGroups = useAppStore((state) => state.approvalGroups);
   const updateWill = useAppStore((state) => state.updateWill);
   const activateWill = useAppStore((state) => state.activateWill);
@@ -95,6 +108,10 @@ export default function Will() {
   const completeDonationStep = useAppStore((state) => state.completeDonationStep);
   const addAuditLog = useAppStore((state) => state.addAuditLog);
   const getDonationItemValue = useAppStore((state) => state.getDonationItemValue);
+  const assignExecutorToWill = useAppStore((state) => state.assignExecutorToWill);
+  const removeExecutorFromWill = useAppStore((state) => state.removeExecutorFromWill);
+  const getWillExecutors = useAppStore((state) => state.getWillExecutors);
+  const getActiveExecutors = useAppStore((state) => state.getActiveExecutors);
 
   const [editingStep, setEditingStep] = useState<ExecutionStep | null>(null);
   const [showStepModal, setShowStepModal] = useState(false);
@@ -237,6 +254,32 @@ export default function Will() {
   const verifiedWitnesses = witnesses.filter((w) => w.verificationStatus === 'verified').length;
   const lawyers = witnesses.filter((w) => w.isLawyer);
   const verifiedLawyers = lawyers.filter((w) => w.verificationStatus === 'verified').length;
+  const willExecutors = getWillExecutors();
+  const activeExecutors = getActiveExecutors();
+
+  const handleAssignExecutor = (executorId: string) => {
+    assignExecutorToWill(executorId);
+    const executor = executors.find((e) => e.id === executorId);
+    if (executor) {
+      addNotification({
+        type: 'success',
+        title: '执行人已分配',
+        message: `执行人「${executor.name}」已分配到当前遗嘱`,
+      });
+    }
+  };
+
+  const handleRemoveExecutor = (executorId: string) => {
+    removeExecutorFromWill(executorId);
+    const executor = executors.find((e) => e.id === executorId);
+    if (executor) {
+      addNotification({
+        type: 'info',
+        title: '执行人已移除',
+        message: `执行人「${executor.name}」已从当前遗嘱移除`,
+      });
+    }
+  };
 
   const actionTypeLabels: Record<ExecutionStep['actionType'], string> = {
     notify: '发送通知',
@@ -320,7 +363,7 @@ export default function Will() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-gray-50 rounded-xl p-4">
             <p className="text-sm text-gray-500">创建时间</p>
             <p className="text-lg font-semibold text-gray-900 mt-1">
@@ -337,6 +380,12 @@ export default function Will() {
             <p className="text-sm text-gray-500">执行步骤</p>
             <p className="text-lg font-semibold text-gray-900 mt-1">
               {will?.executionSteps.length || 0} 步
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
+            <p className="text-sm text-indigo-600 font-medium">遗嘱执行人</p>
+            <p className="text-lg font-semibold text-gray-900 mt-1">
+              <span className="text-indigo-600">{willExecutors.length}</span> / {activeExecutors.length} 人
             </p>
           </div>
         </div>
@@ -497,6 +546,213 @@ export default function Will() {
           )}
         </div>
       )}
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-indigo-500" />
+            遗嘱执行人
+          </h3>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-500">
+              已分配 <span className="font-semibold text-indigo-600">{willExecutors.length}</span> / <span className="text-gray-600">{activeExecutors.length}</span> 位活跃执行人
+            </div>
+            <Link
+              to="/executors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
+            >
+              <Edit2 className="w-4 h-4" />
+              管理执行人
+            </Link>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-4">
+          独立于继承人的第三方执行人，负责监督遗嘱执行流程，确保资产分配公正透明
+        </p>
+
+        {willExecutors.length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+            <UserCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 mb-1">尚未分配遗嘱执行人</p>
+            <p className="text-xs text-gray-400 mb-3">执行人将负责监督执行流程、发送通知、审批确认等关键操作</p>
+            {activeExecutors.length > 0 ? (
+              <div className="flex flex-wrap justify-center gap-2">
+                {activeExecutors.map((executor) => (
+                  <button
+                    key={executor.id}
+                    onClick={() => handleAssignExecutor(executor.id)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors text-sm"
+                  >
+                    <User className="w-4 h-4 text-indigo-500" />
+                    <span>{executor.name}</span>
+                    <span className="text-xs text-gray-400">({executor.relationship})</span>
+                    <Plus className="w-3.5 h-3.5 text-green-500" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Link
+                to="/executors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                添加执行人
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {willExecutors.map((executor) => {
+              const StatusIcon = executor.verificationStatus === 'verified' ? CheckCircle : Clock;
+              const statusColor = executor.verificationStatus === 'verified' ? 'text-green-500' : 'text-amber-500';
+              
+              return (
+                <div
+                  key={executor.id}
+                  className="flex items-start justify-between gap-4 p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl border border-indigo-100"
+                >
+                  <div className="flex items-start gap-4 flex-1">
+                    <div className={cn(
+                      'w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0',
+                      executor.isLawyer ? 'bg-purple-100' : 'bg-indigo-100'
+                    )}>
+                      {executor.isLawyer ? (
+                        <Shield className="w-6 h-6 text-purple-600" />
+                      ) : (
+                        <UserCheck className="w-6 h-6 text-indigo-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-gray-900">{executor.name}</h4>
+                        {executor.isLawyer && (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+                            律师
+                          </span>
+                        )}
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1',
+                            EXECUTOR_STATUS_COLORS[executor.status]
+                          )}
+                        >
+                          {EXECUTOR_STATUS_LABELS[executor.status]}
+                        </span>
+                        <span className={cn('flex items-center gap-1 text-xs', statusColor)}>
+                          <StatusIcon className="w-3.5 h-3.5" />
+                          {executor.verificationStatus === 'verified' ? '已验证' : '待验证'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">
+                        关系：{executor.relationship}
+                      </p>
+                      <div className="flex items-center gap-4 mt-2 flex-wrap">
+                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                          <Bell className="w-4 h-4" />
+                          {executor.email}
+                        </div>
+                        {executor.phone && (
+                          <div className="flex items-center gap-1 text-sm text-gray-500">
+                            <Clock className="w-4 h-4" />
+                            {executor.phone}
+                          </div>
+                        )}
+                        {executor.isLawyer && executor.firmName && (
+                          <div className="flex items-center gap-1 text-sm text-gray-500">
+                            <Building className="w-4 h-4" />
+                            {executor.firmName}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-gray-500 mb-2">已授予权限：</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(Object.keys(executor.permissions) as Array<keyof typeof executor.permissions>).map((perm) => (
+                            executor.permissions[perm] && (
+                              <span
+                                key={perm}
+                                className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium flex items-center gap-1"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                {EXECUTOR_PERMISSION_LABELS[perm]}
+                              </span>
+                            )
+                          ))}
+                          {Object.values(executor.permissions).every(v => !v) && (
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full font-medium">
+                              暂无权限
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {executor.note && (
+                        <p className="text-xs text-gray-500 mt-2 flex items-start gap-1">
+                          <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                          {executor.note}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleRemoveExecutor(executor.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                      title="从当前遗嘱移除此执行人"
+                    >
+                      <Unlink className="w-4 h-4" />
+                      移除
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {activeExecutors.length > willExecutors.length && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-sm text-gray-600 mb-2">可添加的其他执行人：</p>
+                <div className="flex flex-wrap gap-2">
+                  {activeExecutors
+                    .filter(e => !will?.executorIds.includes(e.id))
+                    .map((executor) => (
+                      <button
+                        key={executor.id}
+                        onClick={() => handleAssignExecutor(executor.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                      >
+                        <Link2 className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{executor.name}</span>
+                        <Plus className="w-3 h-3 text-green-500" />
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {willExecutors.length > 0 && (
+          <div className="mt-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-800">执行人职责说明</p>
+                <p className="text-xs text-blue-600 mt-1">
+                  执行人在遗嘱触发后将按照授予的权限执行各项操作，包括：
+                  {(Object.keys(EXECUTOR_PERMISSION_DESCRIPTIONS) as Array<keyof typeof EXECUTOR_PERMISSION_DESCRIPTIONS>).map((perm, idx) => (
+                    <span key={perm}>
+                      {idx > 0 ? '、' : ''}{EXECUTOR_PERMISSION_DESCRIPTIONS[perm]}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">

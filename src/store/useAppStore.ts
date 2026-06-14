@@ -49,6 +49,9 @@ import type {
   VerificationMaterialType,
   AssetNote,
   AssetNoteCategory,
+  Executor,
+  ExecutorPermissions,
+  ExecutorStatus,
 } from '@/types';
 import {
   generateId,
@@ -77,6 +80,7 @@ interface AppState {
   heirs: Heir[];
   will: DigitalWill | null;
   witnesses: Witness[];
+  executors: Executor[];
   approvalGroups: WitnessApprovalGroup[];
   auditLogs: AuditLogEntry[];
   notifications: Notification[];
@@ -128,6 +132,16 @@ interface AppState {
   updateWitness: (id: string, updates: Partial<Witness>) => void;
   deleteWitness: (id: string) => void;
   verifyWitness: (id: string) => void;
+
+  addExecutor: (executor: Omit<Executor, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'verificationStatus' | 'permissions'> & { permissions?: Partial<ExecutorPermissions> }) => void;
+  updateExecutor: (id: string, updates: Partial<Executor>) => void;
+  deleteExecutor: (id: string) => void;
+  verifyExecutor: (id: string) => void;
+  updateExecutorPermissions: (id: string, permissions: Partial<ExecutorPermissions>) => void;
+  assignExecutorToWill: (executorId: string) => void;
+  removeExecutorFromWill: (executorId: string) => void;
+  getActiveExecutors: () => Executor[];
+  getWillExecutors: () => Executor[];
 
   createApprovalGroup: (group: Omit<WitnessApprovalGroup, 'id' | 'createdAt' | 'updatedAt' | 'approvals' | 'status'>) => void;
   updateApprovalGroup: (groupId: string, updates: Partial<Omit<WitnessApprovalGroup, 'id' | 'createdAt' | 'updatedAt'>>) => void;
@@ -182,8 +196,18 @@ interface AppState {
   getLockedCapsuleAssets: () => DigitalAsset[];
   getUnlockedCapsuleAssets: () => DigitalAsset[];
 
-  addCredential: (credential: Omit<Credential, 'id' | 'createdAt' | 'updatedAt' | 'isEncrypted'> & { fields: Omit<CredentialField, 'id'>[] }) => void;
-  updateCredential: (id: string, updates: Partial<Omit<Credential, 'id' | 'createdAt'>>) => void;
+  addCredential: (credential: {
+    name: string;
+    category: CredentialCategory;
+    assetId?: string;
+    description?: string;
+    accessLevel: CredentialAccessLevel;
+    heirChainOrder?: number;
+    revealDelayDays: number;
+    tags?: string[];
+    fields: Omit<CredentialField, 'id'>[];
+  }) => void;
+  updateCredential: (id: string, updates: any) => void;
   deleteCredential: (id: string) => void;
   getCredentialsByAsset: (assetId: string) => Credential[];
   getCredentialsByCategory: (category: CredentialCategory) => Credential[];
@@ -743,6 +767,49 @@ const createInitialApprovalGroups = (): WitnessApprovalGroup[] => [
   },
 ];
 
+const createInitialExecutors = (): Executor[] => [
+  {
+    id: 'executor-001',
+    name: '王律师',
+    email: 'wanglawyer@lawfirm.com',
+    phone: '136****5555',
+    relationship: '律师',
+    isLawyer: true,
+    barNumber: '11010120201234567',
+    firmName: '北京恒信律师事务所',
+    permissions: {
+      sendNotification: true,
+      approvalConfirmation: true,
+      assetTransfer: true,
+    },
+    status: 'active',
+    verificationStatus: 'verified',
+    verifiedAt: new Date('2024-02-20').toISOString(),
+    note: '负责整体执行流程监督和法律合规性审核',
+    createdAt: new Date('2024-02-15').toISOString(),
+    updatedAt: new Date('2024-02-15').toISOString(),
+  },
+  {
+    id: 'executor-002',
+    name: '刘洋',
+    email: 'liuyang@example.com',
+    phone: '138****8888',
+    relationship: '挚友',
+    isLawyer: false,
+    permissions: {
+      sendNotification: true,
+      approvalConfirmation: true,
+      assetTransfer: false,
+    },
+    status: 'active',
+    verificationStatus: 'verified',
+    verifiedAt: new Date('2024-03-10').toISOString(),
+    note: '协助执行日常通知和流程确认，不涉及资产移交',
+    createdAt: new Date('2024-03-05').toISOString(),
+    updatedAt: new Date('2024-03-05').toISOString(),
+  },
+];
+
 const createInitialWill = (): DigitalWill => ({
   id: 'will-001',
   ownerId: 'user-001',
@@ -803,6 +870,7 @@ const createInitialWill = (): DigitalWill => ({
   ],
   witnessIds: ['witness-001', 'witness-002'],
   lawyerIds: ['witness-001'],
+  executorIds: ['executor-001', 'executor-002'],
   lastActiveAt: new Date().toISOString(),
   createdAt: new Date('2024-01-01').toISOString(),
   updatedAt: new Date().toISOString(),
@@ -917,6 +985,14 @@ const createInitialAuditLogs = (): AuditLogEntry[] => {
     heir_verification_material_submitted: (name) => `${name}提交了验证材料`,
     heir_verification_material_approved: (name) => `${name}通过了验证材料`,
     heir_verification_material_rejected: (name) => `${name}驳回了验证材料`,
+
+    executor_added: (name) => `${name}添加了遗嘱执行人`,
+    executor_updated: (name) => `${name}更新了遗嘱执行人信息`,
+    executor_removed: (name) => `${name}移除了遗嘱执行人`,
+    executor_verified: (name) => `${name}验证了遗嘱执行人身份`,
+    executor_permissions_updated: (name) => `${name}更新了遗嘱执行人权限`,
+    executor_assigned_to_will: (name) => `${name}分配了遗嘱执行人到遗嘱`,
+    executor_removed_from_will: (name) => `${name}从遗嘱中移除了执行人`,
   };
 
   const ipAddresses = ['192.168.1.100', '10.0.0.50', '172.16.0.25', '192.168.2.88', '10.0.1.200'];
@@ -1177,6 +1253,7 @@ export const useAppStore = create<AppState>()(
       heirs: createInitialHeirs(),
       will: createInitialWill(),
       witnesses: createInitialWitnesses(),
+      executors: createInitialExecutors(),
       approvalGroups: createInitialApprovalGroups(),
       auditLogs: createInitialAuditLogs(),
       notifications: createInitialNotifications(),
@@ -1964,6 +2041,7 @@ export const useAppStore = create<AppState>()(
           executionSteps: will.executionSteps || [],
           witnessIds: will.witnessIds || [],
           lawyerIds: will.lawyerIds || [],
+          executorIds: will.executorIds || [],
           lastActiveAt: now,
           createdAt: now,
           updatedAt: now,
@@ -2267,6 +2345,182 @@ export const useAppStore = create<AppState>()(
             resourceId: id,
           });
         }
+      },
+
+      addExecutor: (executor) => {
+        const now = new Date().toISOString();
+        const newExecutor: Executor = {
+          ...executor,
+          id: generateId(),
+          permissions: {
+            sendNotification: executor.permissions?.sendNotification ?? false,
+            approvalConfirmation: executor.permissions?.approvalConfirmation ?? false,
+            assetTransfer: executor.permissions?.assetTransfer ?? false,
+          },
+          status: 'pending' as ExecutorStatus,
+          verificationStatus: 'pending' as VerificationStatus,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ executors: [...state.executors, newExecutor] }));
+        get().addAuditLog({
+          action: 'executor_added',
+          description: `添加遗嘱执行人：${executor.name}`,
+          resourceType: 'executor',
+          resourceId: newExecutor.id,
+        });
+        get().addNotification({
+          type: 'info',
+          title: '执行人已添加',
+          message: `已向 ${executor.name} 发送验证邀请`,
+        });
+      },
+
+      updateExecutor: (id, updates) => {
+        set((state) => ({
+          executors: state.executors.map((e) =>
+            e.id === id ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e
+          ),
+        }));
+        const executor = get().executors.find((e) => e.id === id);
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_updated',
+            description: `更新遗嘱执行人信息：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: id,
+          });
+        }
+      },
+
+      deleteExecutor: (id) => {
+        const executor = get().executors.find((e) => e.id === id);
+        set((state) => ({
+          executors: state.executors.filter((e) => e.id !== id),
+          will: state.will
+            ? {
+                ...state.will,
+                executorIds: state.will.executorIds.filter((eid) => eid !== id),
+              }
+            : state.will,
+        }));
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_removed',
+            description: `移除遗嘱执行人：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: id,
+          });
+        }
+      },
+
+      verifyExecutor: (id) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          executors: state.executors.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  verificationStatus: 'verified' as VerificationStatus,
+                  status: 'active' as ExecutorStatus,
+                  verifiedAt: now,
+                  updatedAt: now,
+                }
+              : e
+          ),
+        }));
+        const executor = get().executors.find((e) => e.id === id);
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_verified',
+            description: `遗嘱执行人已验证：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: id,
+          });
+          get().addNotification({
+            type: 'success',
+            title: '执行人已验证',
+            message: `${executor.name} 身份验证完成`,
+          });
+        }
+      },
+
+      updateExecutorPermissions: (id, permissions) => {
+        set((state) => ({
+          executors: state.executors.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  permissions: { ...e.permissions, ...permissions },
+                  updatedAt: new Date().toISOString(),
+                }
+              : e
+          ),
+        }));
+        const executor = get().executors.find((e) => e.id === id);
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_permissions_updated',
+            description: `更新执行人权限：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: id,
+          });
+        }
+      },
+
+      assignExecutorToWill: (executorId) => {
+        set((state) => {
+          if (!state.will) return {};
+          if (state.will.executorIds.includes(executorId)) return {};
+          return {
+            will: {
+              ...state.will,
+              executorIds: [...state.will.executorIds, executorId],
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const executor = get().executors.find((e) => e.id === executorId);
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_assigned_to_will',
+            description: `分配执行人到遗嘱：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: executorId,
+          });
+        }
+      },
+
+      removeExecutorFromWill: (executorId) => {
+        set((state) => {
+          if (!state.will) return {};
+          return {
+            will: {
+              ...state.will,
+              executorIds: state.will.executorIds.filter((id) => id !== executorId),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const executor = get().executors.find((e) => e.id === executorId);
+        if (executor) {
+          get().addAuditLog({
+            action: 'executor_removed_from_will',
+            description: `从遗嘱移除执行人：${executor.name}`,
+            resourceType: 'executor',
+            resourceId: executorId,
+          });
+        }
+      },
+
+      getActiveExecutors: () => {
+        return get().executors.filter((e) => e.status === 'active');
+      },
+
+      getWillExecutors: () => {
+        const will = get().will;
+        if (!will) return [];
+        return get().executors.filter((e) => will.executorIds.includes(e.id));
       },
 
       createApprovalGroup: (group) => {
@@ -3364,9 +3618,16 @@ export const useAppStore = create<AppState>()(
         const credential = credentials.find((c) => c.id === id);
         if (!credential) return;
         const now = new Date().toISOString();
+        const processedUpdates = { ...updates };
+        if (processedUpdates.fields) {
+          processedUpdates.fields = processedUpdates.fields.map((f) => ({
+            ...f,
+            id: (f as { id?: string }).id || generateId(),
+          })) as CredentialField[];
+        }
         set((state) => ({
           credentials: state.credentials.map((c) =>
-            c.id === id ? { ...c, ...updates, updatedAt: now } : c
+            c.id === id ? { ...c, ...processedUpdates, updatedAt: now } : c
           ),
         }));
         addAuditLog({

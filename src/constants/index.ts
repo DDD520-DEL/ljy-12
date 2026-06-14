@@ -56,7 +56,32 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   heir: '继承人',
   witness: '见证人',
   lawyer: '律师',
+  executor: '遗嘱执行人',
   admin: '管理员',
+};
+
+export const EXECUTOR_STATUS_LABELS: Record<string, string> = {
+  pending: '待激活',
+  active: '已激活',
+  inactive: '已停用',
+};
+
+export const EXECUTOR_STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-700',
+  active: 'bg-green-100 text-green-700',
+  inactive: 'bg-gray-100 text-gray-600',
+};
+
+export const EXECUTOR_PERMISSION_LABELS: Record<string, string> = {
+  sendNotification: '通知发送',
+  approvalConfirmation: '审批确认',
+  assetTransfer: '资产移交操作',
+};
+
+export const EXECUTOR_PERMISSION_DESCRIPTIONS: Record<string, string> = {
+  sendNotification: '允许向继承人、见证人等发送遗嘱执行相关通知',
+  approvalConfirmation: '允许确认审批流程、见证执行步骤',
+  assetTransfer: '允许执行资产移交操作，包括账号密码移交等',
 };
 
 export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
@@ -131,6 +156,13 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   donation_execution_started: '开始执行捐赠',
   donation_execution_completed: '完成执行捐赠',
   donation_step_completed: '捐赠步骤完成',
+  executor_added: '添加遗嘱执行人',
+  executor_updated: '更新遗嘱执行人',
+  executor_removed: '移除遗嘱执行人',
+  executor_verified: '遗嘱执行人已验证',
+  executor_permissions_updated: '更新执行人权限',
+  executor_assigned_to_will: '分配执行人到遗嘱',
+  executor_removed_from_will: '从遗嘱移除执行人',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -763,6 +795,7 @@ export const WILL_TEMPLATES: WillTemplate[] = [
         witnessCount: 2,
         lawyerApprovalRequired: true,
       },
+      executorIds: [],
       executionSteps: [
         {
           id: 'step-1',
@@ -891,6 +924,7 @@ export const WILL_TEMPLATES: WillTemplate[] = [
         witnessCount: 3,
         lawyerApprovalRequired: true,
       },
+      executorIds: [],
       executionSteps: [
         {
           id: 'step-1',
@@ -1039,6 +1073,7 @@ export const WILL_TEMPLATES: WillTemplate[] = [
         requiresWitnessConfirmation: false,
         lawyerApprovalRequired: false,
       },
+      executorIds: [],
       executionSteps: [
         {
           id: 'step-1',

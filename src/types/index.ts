@@ -98,7 +98,7 @@ export type ReminderRule = {
   repeat: boolean;
 };
 
-export type UserRole = 'owner' | 'heir' | 'witness' | 'lawyer' | 'admin';
+export type UserRole = 'owner' | 'heir' | 'witness' | 'lawyer' | 'executor' | 'admin';
 
 export type AuditActionType =
   | 'asset_created'
@@ -171,7 +171,14 @@ export type AuditActionType =
   | 'donation_allocation_updated'
   | 'donation_execution_started'
   | 'donation_execution_completed'
-  | 'donation_step_completed';
+  | 'donation_step_completed'
+  | 'executor_added'
+  | 'executor_updated'
+  | 'executor_removed'
+  | 'executor_verified'
+  | 'executor_permissions_updated'
+  | 'executor_assigned_to_will'
+  | 'executor_removed_from_will';
 
 export type TimeCapsuleStatus = 'locked' | 'unlocked' | 'expired';
 
@@ -277,6 +284,7 @@ export interface DigitalWill {
   executionSteps: ExecutionStep[];
   witnessIds: string[];
   lawyerIds: string[];
+  executorIds: string[];
   lastActiveAt: string;
   createdAt: string;
   updatedAt: string;
@@ -590,6 +598,35 @@ export interface DonationExecutionState {
     percentage: number;
     completed: boolean;
   }[];
+}
+
+export type ExecutorPermission = 'send_notification' | 'approval_confirmation' | 'asset_transfer';
+
+export type ExecutorStatus = 'pending' | 'active' | 'inactive';
+
+export interface ExecutorPermissions {
+  sendNotification: boolean;
+  approvalConfirmation: boolean;
+  assetTransfer: boolean;
+}
+
+export interface Executor {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  relationship: string;
+  avatar?: string;
+  isLawyer: boolean;
+  barNumber?: string;
+  firmName?: string;
+  permissions: ExecutorPermissions;
+  status: ExecutorStatus;
+  verificationStatus: VerificationStatus;
+  verifiedAt?: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type AssetNoteCategory = 'inheritance_tips' | 'emotional_message' | 'operation_guide' | 'other';
