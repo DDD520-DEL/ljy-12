@@ -48,7 +48,7 @@ import {
   ASSET_NOTE_CATEGORY_ICONS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { SimulationStepDetail, ExecutionStep, AssetNote } from '@/types';
+import type { SimulationStepDetail, ExecutionStep } from '@/types';
 
 const actionIcons: Record<ExecutionStep['actionType'], typeof Bell> = {
   notify: Bell,

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
   Bold,
   Italic,
@@ -31,8 +31,18 @@ export default function RichTextEditor({
   minHeight = '150px',
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastHtmlRef = useRef<string>('');
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const targetHtml = value || `<span style="color: #9ca3af;">${placeholder}</span>`;
+    if (lastHtmlRef.current !== targetHtml) {
+      lastHtmlRef.current = targetHtml;
+      editorRef.current.innerHTML = targetHtml;
+    }
+  }, [value, placeholder]);
 
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value);
@@ -44,6 +54,7 @@ export default function RichTextEditor({
     if (editorRef.current) {
       const html = editorRef.current.innerHTML;
       const text = editorRef.current.innerText;
+      lastHtmlRef.current = html;
       onChange(text, html);
     }
   };
@@ -174,11 +185,6 @@ export default function RichTextEditor({
         style={{ minHeight }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
-        dangerouslySetInnerHTML={{
-          __html:
-            value ||
-            `<span style="color: #9ca3af;">${placeholder}</span>`,
-        }}
       />
     </div>
   );
