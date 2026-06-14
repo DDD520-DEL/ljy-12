@@ -458,6 +458,8 @@ export interface DonationItem {
   fixedAmount?: number;
   percentageOfTotal?: number;
   note?: string;
+  completed?: boolean;
+  completedAt?: string;
 }
 
 export interface DonationAllocation {

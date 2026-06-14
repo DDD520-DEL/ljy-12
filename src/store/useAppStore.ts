@@ -3212,6 +3212,7 @@ export const useAppStore = create<AppState>()(
         const { donationPlan, getDonationItemValue, getAllCharities } = get();
         const totalDonationValue = get().getDonationTotalValue();
         const totalItems = donationPlan?.items.length || 0;
+        const completedItems = donationPlan?.items.filter((i) => i.completed).length || 0;
 
         const charityMap = new Map<string, {
           allocatedValue: number;
@@ -3229,9 +3230,10 @@ export const useAppStore = create<AppState>()(
             const existing = charityMap.get(alloc.charityId) || {
               allocatedValue: 0,
               percentage: 0,
-              completed: donationPlan?.status === 'completed',
+              completed: false,
             };
             existing.allocatedValue += allocValue;
+            if (item.completed) existing.completed = true;
             charityMap.set(alloc.charityId, existing);
           });
         });
@@ -3247,7 +3249,6 @@ export const useAppStore = create<AppState>()(
           });
         }
 
-        const completedItems = donationPlan?.status === 'completed' ? totalItems : 0;
         const overallProgress =
           totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
@@ -3305,7 +3306,20 @@ export const useAppStore = create<AppState>()(
       completeDonationStep: (itemId) => {
         const plan = get().donationPlan;
         const item = plan?.items.find((i) => i.id === itemId);
-        if (!plan || !item) return;
+        if (!plan || !item || item.completed) return;
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              items: state.donationPlan.items.map((i) =>
+                i.id === itemId ? { ...i, completed: true, completedAt: now } : i
+              ),
+              updatedAt: now,
+            },
+          };
+        });
         get().addAuditLog({
           action: 'donation_step_completed',
           description: `完成捐赠项目执行，价值 ¥${get().getDonationItemValue(item).toLocaleString()}`,
@@ -3326,6 +3340,9 @@ export const useAppStore = create<AppState>()(
               status: 'completed',
               completedAt: now,
               updatedAt: now,
+              items: state.donationPlan.items.map((i) =>
+                i.completed ? i : { ...i, completed: true, completedAt: now }
+              ),
             },
           };
         });
