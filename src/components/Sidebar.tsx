@@ -5,6 +5,7 @@ import {
   Users,
   FileText,
   Shield,
+  ShieldHalf,
   Scale,
   History,
   Bell,
@@ -22,6 +23,7 @@ import { useAppStore } from '@/store/useAppStore';
 
 const navItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
+  { path: '/security', label: '安全评分', icon: ShieldHalf },
   { path: '/reports', label: '关系报表', icon: PieChart },
   { path: '/asset-stats', label: '资产统计看板', icon: BarChart2 },
   { path: '/assets', label: '数字资产', icon: FolderKanban },

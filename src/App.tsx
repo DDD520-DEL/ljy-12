@@ -15,6 +15,7 @@ import DonationPlanning from "@/pages/DonationPlanning";
 import HeirVerificationCenter from "@/pages/HeirVerificationCenter";
 import AssetCategoryStats from "@/pages/AssetCategoryStats";
 import FamilyGraph from "@/pages/FamilyGraph";
+import AccountSecurity from "@/pages/AccountSecurity";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/security" element={<AccountSecurity />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/assets" element={<Assets />} />
           <Route path="/vault" element={<PasswordVault />} />
