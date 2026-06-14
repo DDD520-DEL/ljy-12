@@ -14,6 +14,7 @@ import {
   Heart,
   BookTemplate,
   BadgeCheck,
+  BarChart2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -21,6 +22,7 @@ import { useAppStore } from '@/store/useAppStore';
 const navItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
   { path: '/reports', label: '关系报表', icon: PieChart },
+  { path: '/asset-stats', label: '资产统计看板', icon: BarChart2 },
   { path: '/assets', label: '数字资产', icon: FolderKanban },
   { path: '/vault', label: '密码保险箱', icon: KeyRound },
   { path: '/heirs', label: '继承人管理', icon: Users },
