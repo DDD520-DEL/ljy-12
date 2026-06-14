@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   History,
   Search,
@@ -51,6 +51,56 @@ const TIME_PRESETS: { label: string; value: TimeRangePreset }[] = [
   { label: '全部', value: 'all' },
   { label: '自定义', value: 'custom' },
 ];
+
+const renderSvgToPng = (svgElement: SVGSVGElement, width: number, height: number): Promise<string> => {
+  return new Promise((resolve) => {
+    const clone = svgElement.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute('width', String(width));
+    clone.setAttribute('height', String(height));
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+    const inlineStyles = (el: Element, source: Element) => {
+      const computed = window.getComputedStyle(source);
+      Array.from(computed).forEach((prop) => {
+        el.setAttribute(prop, computed.getPropertyValue(prop));
+      });
+      Array.from(el.children).forEach((child, i) => {
+        if (source.children[i]) inlineStyles(child, source.children[i]);
+      });
+    };
+    inlineStyles(clone, svgElement);
+
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(clone);
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, width, height);
+      }
+
+      URL.revokeObjectURL(url);
+      const pngBase64 = canvas.toDataURL('image/png').split(',')[1];
+      resolve(pngBase64);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve('');
+    };
+    img.src = url;
+  });
+};
 
 export default function AuditLog() {
   const auditLogs = useAppStore((state) => state.auditLogs);
@@ -235,60 +285,104 @@ export default function AuditLog() {
     );
     trendSummary.avg = trendSummary.days > 0 ? Math.round(trendSummary.total / trendSummary.days) : 0;
 
-    const summaryData = [
-      { 项目: '筛选结果总数', 值: filteredLogs.length },
-      { 项目: '统计天数', 值: trendSummary.days },
-      { 项目: '总操作次数', 值: trendSummary.total },
-      { 项目: '日均操作次数', 值: trendSummary.avg },
-      { 项目: '单日最高操作次数', 值: trendSummary.max },
-      { 项目: '时间范围', 值: timePreset === 'all' ? '全部' : timePreset === 'custom' ? `${customStart || '-'} 至 ${customEnd || '-'}` : TIME_PRESETS.find((p) => p.value === timePreset)?.label || '-' },
-      { 项目: '操作类型筛选', 值: filterAction === 'all' ? '全部' : AUDIT_ACTION_LABELS[filterAction] || filterAction },
-      { 项目: '用户角色筛选', 值: filterRole === 'all' ? '全部' : USER_ROLE_LABELS[filterRole] },
-      { 项目: '资源类型筛选', 值: filterResource === 'all' ? '全部' : getResourceTypeLabel(filterResource) },
-      { 项目: '关键词搜索', 值: searchQuery || '-' },
-      { 项目: '导出时间', 值: new Date().toLocaleString('zh-CN') },
+    const svgs = chartContainerRef.current?.querySelectorAll('svg') || [];
+    let lineChartPng = '';
+    let donutChartPng = '';
+    if (svgs[0]) lineChartPng = await renderSvgToPng(svgs[0] as SVGSVGElement, 600, 240);
+    if (svgs[1]) donutChartPng = await renderSvgToPng(svgs[1] as SVGSVGElement, 200, 200);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = '数字遗产平台';
+    workbook.created = new Date();
+
+    const ws1 = workbook.addWorksheet('报表摘要');
+    ws1.getColumn(1).width = 22;
+    ws1.getColumn(2).width = 42;
+    const summaryRows = [
+      ['项目', '值'],
+      ['筛选结果总数', filteredLogs.length],
+      ['统计天数', trendSummary.days],
+      ['总操作次数', trendSummary.total],
+      ['日均操作次数', trendSummary.avg],
+      ['单日最高操作次数', trendSummary.max],
+      ['时间范围', timePreset === 'all' ? '全部' : timePreset === 'custom' ? `${customStart || '-'} 至 ${customEnd || '-'}` : TIME_PRESETS.find((p) => p.value === timePreset)?.label || '-'],
+      ['操作类型筛选', filterAction === 'all' ? '全部' : AUDIT_ACTION_LABELS[filterAction] || filterAction],
+      ['用户角色筛选', filterRole === 'all' ? '全部' : USER_ROLE_LABELS[filterRole]],
+      ['资源类型筛选', filterResource === 'all' ? '全部' : getResourceTypeLabel(filterResource)],
+      ['关键词搜索', searchQuery || '-'],
+      ['导出时间', new Date().toLocaleString('zh-CN')],
     ];
+    summaryRows.forEach((row) => ws1.addRow(row));
+    const headerRow1 = ws1.getRow(1);
+    headerRow1.font = { bold: true, size: 12 };
+    headerRow1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
 
-    const trendExport = trendData.map((d) => ({
-      日期: d.label,
-      操作次数: d.value,
-    }));
+    const ws2 = workbook.addWorksheet('操作频次趋势');
+    ws2.getColumn(1).width = 16;
+    ws2.getColumn(2).width = 16;
+    ws2.addRow(['日期', '操作次数']);
+    ws2.getRow(1).font = { bold: true, size: 11 };
+    ws2.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    trendData.forEach((d) => ws2.addRow([d.label, d.value]));
 
-    const distExport = actionDistribution.map((d) => ({
-      操作类型: d.label,
-      次数: d.value,
-      占比: `${((d.value / (filteredLogs.length || 1)) * 100).toFixed(1)}%`,
-    }));
+    if (lineChartPng) {
+      const lineImageId = workbook.addImage({ base64: lineChartPng, extension: 'png' });
+      ws2.addImage(lineImageId, {
+        tl: { col: 0, row: trendData.length + 3 },
+        ext: { width: 720, height: 288 },
+      });
+    }
 
-    const logsExport = filteredLogs.map((log) => ({
-      时间: formatDate(log.timestamp),
-      操作类型: AUDIT_ACTION_LABELS[log.action] || log.action,
-      操作描述: log.description,
-      用户ID: log.userId,
-      用户角色: USER_ROLE_LABELS[log.userRole],
-      资源类型: getResourceTypeLabel(log.resourceType),
-      资源ID: log.resourceId || '-',
-      IP地址: log.ipAddress || '-',
-      交易哈希: log.transactionHash,
-    }));
+    const ws3 = workbook.addWorksheet('操作类型分布');
+    ws3.getColumn(1).width = 22;
+    ws3.getColumn(2).width = 12;
+    ws3.getColumn(3).width = 12;
+    ws3.addRow(['操作类型', '次数', '占比']);
+    ws3.getRow(1).font = { bold: true, size: 11 };
+    ws3.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    actionDistribution.forEach((d) => {
+      ws3.addRow([d.label, d.value, `${((d.value / (filteredLogs.length || 1)) * 100).toFixed(1)}%`]);
+    });
 
-    const wb = XLSX.utils.book_new();
-    const ws1 = XLSX.utils.json_to_sheet(summaryData);
-    const ws2 = XLSX.utils.json_to_sheet(trendExport);
-    const ws3 = XLSX.utils.json_to_sheet(distExport);
-    const ws4 = XLSX.utils.json_to_sheet(logsExport);
+    if (donutChartPng) {
+      const donutImageId = workbook.addImage({ base64: donutChartPng, extension: 'png' });
+      ws3.addImage(donutImageId, {
+        tl: { col: 0, row: actionDistribution.length + 3 },
+        ext: { width: 300, height: 300 },
+      });
+    }
 
-    ws1['!cols'] = [{ wch: 20 }, { wch: 40 }];
-    ws2['!cols'] = [{ wch: 15 }, { wch: 15 }];
-    ws3['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 10 }];
+    const ws4 = workbook.addWorksheet('审计日志明细');
+    const logHeaders = ['时间', '操作类型', '操作描述', '用户ID', '用户角色', '资源类型', '资源ID', 'IP地址', '交易哈希'];
+    const logColWidths = [20, 16, 36, 14, 14, 14, 14, 16, 24];
+    logColWidths.forEach((w, i) => (ws4.getColumn(i + 1).width = w));
+    ws4.addRow(logHeaders);
+    ws4.getRow(1).font = { bold: true, size: 11 };
+    ws4.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    filteredLogs.forEach((log) => {
+      ws4.addRow([
+        formatDate(log.timestamp),
+        AUDIT_ACTION_LABELS[log.action] || log.action,
+        log.description,
+        log.userId,
+        USER_ROLE_LABELS[log.userRole],
+        getResourceTypeLabel(log.resourceType),
+        log.resourceId || '-',
+        log.ipAddress || '-',
+        log.transactionHash,
+      ]);
+    });
 
-    XLSX.utils.book_append_sheet(wb, ws1, '报表摘要');
-    XLSX.utils.book_append_sheet(wb, ws2, '操作频次趋势');
-    XLSX.utils.book_append_sheet(wb, ws3, '操作类型分布');
-    XLSX.utils.book_append_sheet(wb, ws4, '审计日志明细');
-
-    const filename = `审计日志报表_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(wb, filename);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `审计日志报表_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const getActionIcon = (action: AuditActionType) => {
