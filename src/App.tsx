@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
+import Reports from "@/pages/Reports";
 import Assets from "@/pages/Assets";
 import Heirs from "@/pages/Heirs";
 import Will from "@/pages/Will";
@@ -15,6 +16,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/assets" element={<Assets />} />
           <Route path="/heirs" element={<Heirs />} />
           <Route path="/will" element={<Will />} />
