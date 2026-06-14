@@ -163,6 +163,22 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   executor_permissions_updated: '更新执行人权限',
   executor_assigned_to_will: '分配执行人到遗嘱',
   executor_removed_from_will: '从遗嘱移除执行人',
+  recovery_key_created: '创建恢复密钥',
+  recovery_key_updated: '更新恢复密钥',
+  recovery_key_revoked: '吊销恢复密钥',
+  recovery_key_activated: '激活恢复密钥',
+  shard_distributed: '分发密钥分片',
+  shard_verified: '验证密钥分片',
+  shard_used: '使用密钥分片',
+  recovery_started: '启动资产恢复',
+  recovery_completed: '完成资产恢复',
+  recovery_key_recovered: '恢复密钥成功',
+};
+
+export const SHARDING_ALGORITHM_LABELS: Record<string, string> = {
+  shamir: 'Shamir秘密共享',
+  simple_split: '简单拆分',
+  hierarchical: '分层分片',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -1150,4 +1166,50 @@ export const WILL_TEMPLATE_DIFFICULTY_COLORS: Record<string, string> = {
   easy: 'bg-emerald-100 text-emerald-700',
   medium: 'bg-amber-100 text-amber-700',
   hard: 'bg-rose-100 text-rose-700',
+};
+
+export const RECOVERY_KEY_STATUS_LABELS: Record<string, string> = {
+  draft: '草稿',
+  active: '已激活',
+  recovering: '恢复中',
+  recovered: '已恢复',
+  revoked: '已吊销',
+};
+
+export const RECOVERY_KEY_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  active: 'bg-emerald-100 text-emerald-700',
+  recovering: 'bg-amber-100 text-amber-700',
+  recovered: 'bg-blue-100 text-blue-700',
+  revoked: 'bg-red-100 text-red-700',
+};
+
+export const RECOVERY_SHARD_STATUS_LABELS: Record<string, string> = {
+  pending: '待分配',
+  distributed: '已分发',
+  verified: '已验证',
+  used: '已使用',
+  expired: '已过期',
+};
+
+export const RECOVERY_SHARD_STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-gray-100 text-gray-600',
+  distributed: 'bg-blue-100 text-blue-700',
+  verified: 'bg-emerald-100 text-emerald-700',
+  used: 'bg-purple-100 text-purple-700',
+  expired: 'bg-red-100 text-red-600',
+};
+
+export const RECIPIENT_TYPE_LABELS: Record<string, string> = {
+  heir: '继承人',
+  witness: '见证人',
+  executor: '执行人',
+  lawyer: '律师',
+};
+
+export const RECIPIENT_TYPE_COLORS: Record<string, string> = {
+  heir: 'bg-indigo-100 text-indigo-700',
+  witness: 'bg-cyan-100 text-cyan-700',
+  executor: 'bg-teal-100 text-teal-700',
+  lawyer: 'bg-amber-100 text-amber-700',
 };

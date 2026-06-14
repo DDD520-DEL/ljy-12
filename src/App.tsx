@@ -17,6 +17,7 @@ import HeirVerificationCenter from "@/pages/HeirVerificationCenter";
 import AssetCategoryStats from "@/pages/AssetCategoryStats";
 import FamilyGraph from "@/pages/FamilyGraph";
 import AccountSecurity from "@/pages/AccountSecurity";
+import RecoveryKeySharding from "@/pages/RecoveryKeySharding";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/heir-verification" element={<HeirVerificationCenter />} />
           <Route path="/asset-stats" element={<AssetCategoryStats />} />
           <Route path="/family-graph" element={<FamilyGraph />} />
+          <Route path="/recovery-sharding" element={<RecoveryKeySharding />} />
         </Route>
       </Routes>
     </Router>

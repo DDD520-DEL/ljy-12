@@ -52,6 +52,12 @@ import type {
   Executor,
   ExecutorPermissions,
   ExecutorStatus,
+  RecoveryKey,
+  RecoveryKeyShard,
+  RecoveryProgress,
+  RecoveryKeyStatus,
+  RecoveryKeyShardStatus,
+  ShardingAlgorithm,
 } from '@/types';
 import {
   generateId,
@@ -261,6 +267,42 @@ interface AppState {
   getAssetNotesByCategory: (assetId: string, category: AssetNoteCategory) => AssetNote[];
   getImportantNotes: (assetId?: string) => AssetNote[];
   toggleAssetNoteImportant: (id: string) => void;
+
+  recoveryKeys: RecoveryKey[];
+  recoveryProgresses: RecoveryProgress[];
+  createRecoveryKey: (assetId: string, config: {
+    totalShards: number;
+    requiredShards: number;
+    algorithm: ShardingAlgorithm;
+    description?: string;
+    autoRevokeDays?: number;
+  }) => RecoveryKey | null;
+  updateRecoveryKey: (id: string, updates: Partial<RecoveryKey>) => void;
+  deleteRecoveryKey: (id: string) => void;
+  activateRecoveryKey: (id: string) => void;
+  revokeRecoveryKey: (id: string) => void;
+  assignShard: (recoveryKeyId: string, shardId: string, recipient: {
+    id: string;
+    name: string;
+    email: string;
+    type: 'heir' | 'witness' | 'executor' | 'lawyer';
+    note?: string;
+  }) => void;
+  distributeShard: (recoveryKeyId: string, shardId: string) => void;
+  verifyShard: (recoveryKeyId: string, shardId: string, verificationCode: string) => boolean;
+  startRecovery: (recoveryKeyId: string) => void;
+  collectShard: (recoveryKeyId: string, shardId: string, shardData: string) => boolean;
+  getRecoveryKeyByAsset: (assetId: string) => RecoveryKey | undefined;
+  getRecoveryProgress: (recoveryKeyId: string) => RecoveryProgress | undefined;
+  getAvailableRecipients: () => Array<{
+    id: string;
+    name: string;
+    email: string;
+    type: 'heir' | 'witness' | 'executor' | 'lawyer';
+  }>;
+  generateMasterKey: () => string;
+  splitKey: (masterKey: string, totalShards: number, requiredShards: number, algorithm: ShardingAlgorithm) => string[];
+  combineShards: (shards: string[], algorithm: ShardingAlgorithm) => string | null;
 }
 
 const initialUser: User = {
@@ -993,6 +1035,16 @@ const createInitialAuditLogs = (): AuditLogEntry[] => {
     executor_permissions_updated: (name) => `${name}更新了遗嘱执行人权限`,
     executor_assigned_to_will: (name) => `${name}分配了遗嘱执行人到遗嘱`,
     executor_removed_from_will: (name) => `${name}从遗嘱中移除了执行人`,
+    recovery_key_created: (name, rt) => `${name}创建了${rt}恢复密钥`,
+    recovery_key_updated: (name, rt) => `${name}更新了${rt}恢复密钥`,
+    recovery_key_revoked: (name, rt) => `${name}吊销了${rt}恢复密钥`,
+    recovery_key_activated: (name, rt) => `${name}激活了${rt}恢复密钥`,
+    shard_distributed: (name, rt) => `${name}分发了${rt}密钥分片`,
+    shard_verified: (name, rt) => `${name}验证了${rt}密钥分片`,
+    shard_used: (name, rt) => `${name}使用了${rt}密钥分片`,
+    recovery_started: (name, rt) => `${name}启动了${rt}资产恢复`,
+    recovery_completed: (name, rt) => `${name}完成了${rt}资产恢复`,
+    recovery_key_recovered: (name, rt) => `${name}成功恢复了${rt}密钥`,
   };
 
   const ipAddresses = ['192.168.1.100', '10.0.0.50', '172.16.0.25', '192.168.2.88', '10.0.1.200'];
@@ -1245,6 +1297,172 @@ const createInitialAssetNotes = (): AssetNote[] => [
   },
 ];
 
+const createInitialRecoveryKeys = (): RecoveryKey[] => [
+  {
+    id: 'rkey-001',
+    assetId: 'asset-003',
+    assetName: '比特币钱包',
+    masterKeyHash: 'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890',
+    algorithm: 'shamir',
+    totalShards: 5,
+    requiredShards: 3,
+    status: 'active',
+    createdAt: new Date('2024-04-15').toISOString(),
+    updatedAt: new Date('2024-04-15').toISOString(),
+    activatedAt: new Date('2024-04-15').toISOString(),
+    description: '比特币钱包主私钥分片，用于紧急恢复访问',
+    autoRevokeDays: 365,
+    shards: [
+      {
+        id: 'shard-001',
+        shardIndex: 1,
+        shardData: 'shard-data-1-abc123',
+        recipientId: 'heir-001',
+        recipientName: '李芳',
+        recipientEmail: 'lifang@example.com',
+        recipientType: 'heir',
+        status: 'distributed',
+        distributedAt: new Date('2024-04-16').toISOString(),
+        verifiedAt: new Date('2024-04-17').toISOString(),
+        verificationCode: '123456',
+      },
+      {
+        id: 'shard-002',
+        shardIndex: 2,
+        shardData: 'shard-data-2-def456',
+        recipientId: 'heir-002',
+        recipientName: '张伟',
+        recipientEmail: 'zhangwei@example.com',
+        recipientType: 'heir',
+        status: 'distributed',
+        distributedAt: new Date('2024-04-16').toISOString(),
+        verifiedAt: new Date('2024-04-18').toISOString(),
+        verificationCode: '234567',
+      },
+      {
+        id: 'shard-003',
+        shardIndex: 3,
+        shardData: 'shard-data-3-ghi789',
+        recipientId: 'witness-001',
+        recipientName: '王律师',
+        recipientEmail: 'wanglawyer@lawfirm.com',
+        recipientType: 'lawyer',
+        status: 'distributed',
+        distributedAt: new Date('2024-04-16').toISOString(),
+        verifiedAt: new Date('2024-04-17').toISOString(),
+        verificationCode: '345678',
+      },
+      {
+        id: 'shard-004',
+        shardIndex: 4,
+        shardData: 'shard-data-4-jkl012',
+        recipientId: 'executor-001',
+        recipientName: '王律师',
+        recipientEmail: 'wanglawyer@lawfirm.com',
+        recipientType: 'executor',
+        status: 'pending',
+      },
+      {
+        id: 'shard-005',
+        shardIndex: 5,
+        shardData: 'shard-data-5-mno345',
+        recipientId: 'witness-002',
+        recipientName: '陈刚',
+        recipientEmail: 'chengang@example.com',
+        recipientType: 'witness',
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'rkey-002',
+    assetId: 'asset-001',
+    assetName: '微信账号',
+    masterKeyHash: 'f67890abcdef1234567890abcdef1234567890abcdef1234567890a1b2c3d4e5',
+    algorithm: 'shamir',
+    totalShards: 3,
+    requiredShards: 2,
+    status: 'active',
+    createdAt: new Date('2024-05-10').toISOString(),
+    updatedAt: new Date('2024-05-10').toISOString(),
+    activatedAt: new Date('2024-05-10').toISOString(),
+    description: '微信账号恢复密钥，包含登录凭证和支付密码恢复',
+    autoRevokeDays: 180,
+    shards: [
+      {
+        id: 'shard-006',
+        shardIndex: 1,
+        shardData: 'shard-data-6-pqr678',
+        recipientId: 'heir-001',
+        recipientName: '李芳',
+        recipientEmail: 'lifang@example.com',
+        recipientType: 'heir',
+        status: 'distributed',
+        distributedAt: new Date('2024-05-11').toISOString(),
+        verifiedAt: new Date('2024-05-12').toISOString(),
+        verificationCode: '456789',
+      },
+      {
+        id: 'shard-007',
+        shardIndex: 2,
+        shardData: 'shard-data-7-stu901',
+        recipientId: 'heir-002',
+        recipientName: '张伟',
+        recipientEmail: 'zhangwei@example.com',
+        recipientType: 'heir',
+        status: 'pending',
+      },
+      {
+        id: 'shard-008',
+        shardIndex: 3,
+        shardData: 'shard-data-8-vwx234',
+        recipientId: 'executor-002',
+        recipientName: '刘洋',
+        recipientEmail: 'liuyang@example.com',
+        recipientType: 'executor',
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'rkey-003',
+    assetId: 'asset-005',
+    assetName: 'Gmail 邮箱',
+    masterKeyHash: '90abcdef1234567890abcdef1234567890a1b2c3d4e5f67890abcdef12345678',
+    algorithm: 'simple_split',
+    totalShards: 2,
+    requiredShards: 2,
+    status: 'draft',
+    createdAt: new Date('2024-06-01').toISOString(),
+    updatedAt: new Date('2024-06-01').toISOString(),
+    description: 'Gmail邮箱恢复密钥，草稿状态待分配',
+    shards: [
+      {
+        id: 'shard-009',
+        shardIndex: 1,
+        shardData: 'shard-data-9-yza567',
+        recipientId: '',
+        recipientName: '',
+        recipientEmail: '',
+        recipientType: 'heir',
+        status: 'pending',
+      },
+      {
+        id: 'shard-010',
+        shardIndex: 2,
+        shardData: 'shard-data-10-bcd890',
+        recipientId: '',
+        recipientName: '',
+        recipientEmail: '',
+        recipientType: 'lawyer',
+        status: 'pending',
+      },
+    ],
+  },
+];
+
+const createInitialRecoveryProgresses = (): RecoveryProgress[] => [];
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -1266,6 +1484,8 @@ export const useAppStore = create<AppState>()(
       credentials: createInitialCredentials(),
       vault: createInitialVaultState(),
       assetNotes: createInitialAssetNotes(),
+      recoveryKeys: createInitialRecoveryKeys(),
+      recoveryProgresses: createInitialRecoveryProgresses(),
 
       setCurrentUser: (user) => set({ currentUser: user }),
 
@@ -4531,6 +4751,449 @@ export const useAppStore = create<AppState>()(
           ),
         }));
       },
+
+      generateMasterKey: () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+        let key = '';
+        for (let i = 0; i < 32; i++) {
+          key += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return key;
+      },
+
+      splitKey: (masterKey, totalShards, requiredShards, algorithm) => {
+        if (algorithm === 'simple_split') {
+          const shards: string[] = [];
+          const chunkSize = Math.ceil(masterKey.length / totalShards);
+          for (let i = 0; i < totalShards; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, masterKey.length);
+            shards.push(`${i + 1}-${masterKey.slice(start, end)}`);
+          }
+          return shards;
+        } else {
+          const shards: string[] = [];
+          for (let i = 0; i < totalShards; i++) {
+            const randomPart = Array.from({ length: 16 }, () =>
+              Math.floor(Math.random() * 16).toString(16)
+            ).join('');
+            shards.push(`${i + 1}-${masterKey.slice(0, 8)}${randomPart}`);
+          }
+          return shards;
+        }
+      },
+
+      combineShards: (shards, algorithm) => {
+        if (shards.length === 0) return null;
+        if (algorithm === 'simple_split') {
+          const sorted = [...shards].sort((a, b) => {
+            const aIdx = parseInt(a.split('-')[0]);
+            const bIdx = parseInt(b.split('-')[0]);
+            return aIdx - bIdx;
+          });
+          return sorted.map((s) => s.split('-').slice(1).join('-')).join('');
+        } else {
+          return shards[0].split('-')[1].slice(0, 8).padEnd(32, '*');
+        }
+      },
+
+      getAvailableRecipients: () => {
+        const { heirs, witnesses, executors } = get();
+        const recipients: Array<{
+          id: string;
+          name: string;
+          email: string;
+          type: 'heir' | 'witness' | 'executor' | 'lawyer';
+        }> = [];
+
+        heirs.forEach((h) => {
+          recipients.push({
+            id: h.id,
+            name: h.name,
+            email: h.email,
+            type: 'heir',
+          });
+        });
+
+        witnesses.forEach((w) => {
+          recipients.push({
+            id: w.id,
+            name: w.name,
+            email: w.email,
+            type: w.isLawyer ? 'lawyer' : 'witness',
+          });
+        });
+
+        executors.forEach((e) => {
+          recipients.push({
+            id: e.id,
+            name: e.name,
+            email: e.email,
+            type: e.isLawyer ? 'lawyer' : 'executor',
+          });
+        });
+
+        return recipients;
+      },
+
+      createRecoveryKey: (assetId, config) => {
+        const asset = get().assets.find((a) => a.id === assetId);
+        if (!asset) return null;
+
+        const masterKey = get().generateMasterKey();
+        const masterKeyHash = generateHash(masterKey);
+        const shardData = get().splitKey(
+          masterKey,
+          config.totalShards,
+          config.requiredShards,
+          config.algorithm
+        );
+
+        const now = new Date().toISOString();
+        const shards: RecoveryKeyShard[] = shardData.map((data, index) => ({
+          id: generateId(),
+          shardIndex: index + 1,
+          shardData: data,
+          recipientId: '',
+          recipientName: '',
+          recipientEmail: '',
+          recipientType: 'heir' as const,
+          status: 'pending' as const,
+        }));
+
+        const newRecoveryKey: RecoveryKey = {
+          id: generateId(),
+          assetId,
+          assetName: asset.name,
+          masterKeyHash,
+          algorithm: config.algorithm,
+          totalShards: config.totalShards,
+          requiredShards: config.requiredShards,
+          shards,
+          status: 'draft' as const,
+          createdAt: now,
+          updatedAt: now,
+          description: config.description,
+          autoRevokeDays: config.autoRevokeDays,
+        };
+
+        set((state) => ({
+          recoveryKeys: [newRecoveryKey, ...state.recoveryKeys],
+        }));
+
+        get().addAuditLog({
+          action: 'recovery_key_created',
+          description: `为资产「${asset.name}」创建恢复密钥，${config.totalShards}分片，需要${config.requiredShards}片恢复`,
+          resourceType: 'recovery_key',
+          resourceId: newRecoveryKey.id,
+        });
+
+        return newRecoveryKey;
+      },
+
+      updateRecoveryKey: (id, updates) => {
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === id ? { ...k, ...updates, updatedAt: new Date().toISOString() } : k
+          ),
+        }));
+        const key = get().recoveryKeys.find((k) => k.id === id);
+        if (key) {
+          get().addAuditLog({
+            action: 'recovery_key_updated',
+            description: `更新恢复密钥配置：${key.assetName}`,
+            resourceType: 'recovery_key',
+            resourceId: id,
+          });
+        }
+      },
+
+      deleteRecoveryKey: (id) => {
+        const key = get().recoveryKeys.find((k) => k.id === id);
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.filter((k) => k.id !== id),
+        }));
+        if (key) {
+          get().addAuditLog({
+            action: 'recovery_key_revoked',
+            description: `删除恢复密钥：${key.assetName}`,
+            resourceType: 'recovery_key',
+            resourceId: id,
+          });
+        }
+      },
+
+      activateRecoveryKey: (id) => {
+        const key = get().recoveryKeys.find((k) => k.id === id);
+        if (!key) return;
+
+        const hasAllAssigned = key.shards.every((s) => s.recipientId);
+        if (!hasAllAssigned) {
+          alert('请先为所有分片分配接收人');
+          return;
+        }
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === id ? { ...k, status: 'active' as const, activatedAt: now, updatedAt: now } : k
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'recovery_key_activated',
+          description: `激活恢复密钥：${key.assetName}`,
+          resourceType: 'recovery_key',
+          resourceId: id,
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '恢复密钥已激活',
+          message: `「${key.assetName}」的恢复密钥已激活并准备就绪`,
+        });
+      },
+
+      revokeRecoveryKey: (id) => {
+        const key = get().recoveryKeys.find((k) => k.id === id);
+        if (!key) return;
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === id ? { ...k, status: 'revoked' as const, revokedAt: now, updatedAt: now } : k
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'recovery_key_revoked',
+          description: `吊销恢复密钥：${key.assetName}`,
+          resourceType: 'recovery_key',
+          resourceId: id,
+        });
+      },
+
+      assignShard: (recoveryKeyId, shardId, recipient) => {
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === recoveryKeyId
+              ? {
+                  ...k,
+                  updatedAt: new Date().toISOString(),
+                  shards: k.shards.map((s) =>
+                    s.id === shardId
+                      ? {
+                          ...s,
+                          recipientId: recipient.id,
+                          recipientName: recipient.name,
+                          recipientEmail: recipient.email,
+                          recipientType: recipient.type,
+                          verificationCode,
+                          note: recipient.note,
+                        }
+                      : s
+                  ),
+                }
+              : k
+          ),
+        }));
+
+        const key = get().recoveryKeys.find((k) => k.id === recoveryKeyId);
+        if (key) {
+          get().addAuditLog({
+            action: 'shard_distributed',
+            description: `分配分片 #${shardId.slice(-3)} 给 ${recipient.name}（${recipient.type}）`,
+            resourceType: 'recovery_key',
+            resourceId: recoveryKeyId,
+          });
+        }
+      },
+
+      distributeShard: (recoveryKeyId, shardId) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === recoveryKeyId
+              ? {
+                  ...k,
+                  updatedAt: now,
+                  shards: k.shards.map((s) =>
+                    s.id === shardId ? { ...s, status: 'distributed' as const, distributedAt: now } : s
+                  ),
+                }
+              : k
+          ),
+        }));
+
+        const key = get().recoveryKeys.find((k) => k.id === recoveryKeyId);
+        const shard = key?.shards.find((s) => s.id === shardId);
+        if (key && shard) {
+          get().addAuditLog({
+            action: 'shard_distributed',
+            description: `已发送分片 #${shard.shardIndex} 给 ${shard.recipientName}`,
+            resourceType: 'recovery_key',
+            resourceId: recoveryKeyId,
+          });
+          get().addNotification({
+            type: 'info',
+            title: '分片已分发',
+            message: `验证码 ${shard.verificationCode} 已发送给 ${shard.recipientName}`,
+          });
+        }
+      },
+
+      verifyShard: (recoveryKeyId, shardId, verificationCode) => {
+        const key = get().recoveryKeys.find((k) => k.id === recoveryKeyId);
+        const shard = key?.shards.find((s) => s.id === shardId);
+        if (!shard || shard.verificationCode !== verificationCode) {
+          return false;
+        }
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === recoveryKeyId
+              ? {
+                  ...k,
+                  updatedAt: now,
+                  shards: k.shards.map((s) =>
+                    s.id === shardId ? { ...s, status: 'verified' as const, verifiedAt: now } : s
+                  ),
+                }
+              : k
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'shard_verified',
+          description: `分片 #${shard.shardIndex} 验证通过，持有人：${shard.recipientName}`,
+          resourceType: 'recovery_key',
+          resourceId: recoveryKeyId,
+        });
+
+        return true;
+      },
+
+      startRecovery: (recoveryKeyId) => {
+        const key = get().recoveryKeys.find((k) => k.id === recoveryKeyId);
+        if (!key) return;
+
+        const now = new Date().toISOString();
+        const newProgress: RecoveryProgress = {
+          recoveryKeyId,
+          assetId: key.assetId,
+          collectedShardIds: [],
+          collectedCount: 0,
+          requiredCount: key.requiredShards,
+          progressPercentage: 0,
+          canRecover: false,
+          startedAt: now,
+        };
+
+        set((state) => ({
+          recoveryKeys: state.recoveryKeys.map((k) =>
+            k.id === recoveryKeyId ? { ...k, status: 'recovering' as const, updatedAt: now } : k
+          ),
+          recoveryProgresses: [...state.recoveryProgresses, newProgress],
+        }));
+
+        get().addAuditLog({
+          action: 'recovery_started',
+          description: `开始恢复流程：${key.assetName}，需要 ${key.requiredShards} 片分片`,
+          resourceType: 'recovery_key',
+          resourceId: recoveryKeyId,
+        });
+
+        get().addNotification({
+          type: 'warning',
+          title: '资产恢复流程已启动',
+          message: `「${key.assetName}」的恢复流程已启动，请收集 ${key.requiredShards} 片分片`,
+        });
+      },
+
+      collectShard: (recoveryKeyId, shardId, shardData) => {
+        const progress = get().recoveryProgresses.find((p) => p.recoveryKeyId === recoveryKeyId);
+        const key = get().recoveryKeys.find((k) => k.id === recoveryKeyId);
+        if (!progress || !key) return false;
+
+        if (progress.collectedShardIds.includes(shardId)) {
+          return false;
+        }
+
+        const shard = key.shards.find((s) => s.id === shardId);
+        if (!shard || shard.shardData !== shardData) {
+          return false;
+        }
+
+        const now = new Date().toISOString();
+        const newCollectedIds = [...progress.collectedShardIds, shardId];
+        const newCount = newCollectedIds.length;
+        const newPercentage = Math.round((newCount / key.requiredShards) * 100);
+        const canRecover = newCount >= key.requiredShards;
+
+        let recoveredKey: string | undefined;
+        let updatedStatus = key.status;
+
+        if (canRecover) {
+          const collectedShards = key.shards
+            .filter((s) => newCollectedIds.includes(s.id))
+            .map((s) => s.shardData);
+          recoveredKey = get().combineShards(collectedShards, key.algorithm as ShardingAlgorithm) || undefined;
+          updatedStatus = 'recovered';
+
+          set((state) => ({
+            recoveryKeys: state.recoveryKeys.map((k) =>
+              k.id === recoveryKeyId ? { ...k, status: 'recovered' as const, recoveredAt: now, updatedAt: now } : k
+            ),
+          }));
+
+          get().addAuditLog({
+            action: 'recovery_key_recovered',
+            description: `恢复成功：${key.assetName}，已收集 ${newCount} 片分片`,
+            resourceType: 'recovery_key',
+            resourceId: recoveryKeyId,
+          });
+
+          get().addNotification({
+            type: 'success',
+            title: '资产恢复成功',
+            message: `「${key.assetName}」的访问权限已成功恢复`,
+          });
+        }
+
+        set((state) => ({
+          recoveryProgresses: state.recoveryProgresses.map((p) =>
+            p.recoveryKeyId === recoveryKeyId
+              ? {
+                  ...p,
+                  collectedShardIds: newCollectedIds,
+                  collectedCount: newCount,
+                  progressPercentage: Math.min(newPercentage, 100),
+                  canRecover,
+                  lastCollectedAt: now,
+                  recoveredKey,
+                }
+              : p
+          ),
+        }));
+
+        if (!canRecover) {
+          get().addAuditLog({
+            action: 'shard_used',
+            description: `已收集分片 #${shard.shardIndex}，进度 ${newCount}/${key.requiredShards}`,
+            resourceType: 'recovery_key',
+            resourceId: recoveryKeyId,
+          });
+        }
+
+        return true;
+      },
+
+      getRecoveryKeyByAsset: (assetId) => get().recoveryKeys.find((k) => k.assetId === assetId),
+
+      getRecoveryProgress: (recoveryKeyId) =>
+        get().recoveryProgresses.find((p) => p.recoveryKeyId === recoveryKeyId),
     }),
     {
       name: 'digital-legacy-storage',

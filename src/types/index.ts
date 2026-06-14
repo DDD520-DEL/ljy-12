@@ -178,7 +178,17 @@ export type AuditActionType =
   | 'executor_verified'
   | 'executor_permissions_updated'
   | 'executor_assigned_to_will'
-  | 'executor_removed_from_will';
+  | 'executor_removed_from_will'
+  | 'recovery_key_created'
+  | 'recovery_key_updated'
+  | 'recovery_key_revoked'
+  | 'recovery_key_activated'
+  | 'shard_distributed'
+  | 'shard_verified'
+  | 'shard_used'
+  | 'recovery_started'
+  | 'recovery_completed'
+  | 'recovery_key_recovered';
 
 export type TimeCapsuleStatus = 'locked' | 'unlocked' | 'expired';
 
@@ -645,3 +655,63 @@ export interface AssetNote {
   isImportant: boolean;
   tags: string[];
 }
+
+export type RecoveryKeyShardStatus = 'pending' | 'distributed' | 'verified' | 'used' | 'expired';
+
+export type RecoveryKeyStatus = 'draft' | 'active' | 'recovering' | 'recovered' | 'revoked';
+
+export interface RecoveryKeyShard {
+  id: string;
+  shardIndex: number;
+  shardData: string;
+  recipientId: string;
+  recipientName: string;
+  recipientEmail: string;
+  recipientType: 'heir' | 'witness' | 'executor' | 'lawyer';
+  status: RecoveryKeyShardStatus;
+  distributedAt?: string;
+  verifiedAt?: string;
+  usedAt?: string;
+  verificationCode?: string;
+  note?: string;
+}
+
+export interface RecoveryKey {
+  id: string;
+  assetId: string;
+  assetName: string;
+  masterKeyHash: string;
+  algorithm: string;
+  totalShards: number;
+  requiredShards: number;
+  shards: RecoveryKeyShard[];
+  status: RecoveryKeyStatus;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt?: string;
+  revokedAt?: string;
+  recoveredAt?: string;
+  description?: string;
+  autoRevokeDays?: number;
+}
+
+export interface RecoveryProgress {
+  recoveryKeyId: string;
+  assetId: string;
+  collectedShardIds: string[];
+  collectedCount: number;
+  requiredCount: number;
+  progressPercentage: number;
+  canRecover: boolean;
+  startedAt: string;
+  lastCollectedAt?: string;
+  recoveredKey?: string;
+}
+
+export type ShardingAlgorithm = 'shamir' | 'simple_split' | 'hierarchical';
+
+export const SHARDING_ALGORITHM_LABELS: Record<ShardingAlgorithm, string> = {
+  shamir: 'Shamir 秘密共享',
+  simple_split: '简单拆分',
+  hierarchical: '分层分片',
+};
