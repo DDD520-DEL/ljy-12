@@ -15,6 +15,7 @@ import {
   BookTemplate,
   BadgeCheck,
   BarChart2,
+  Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -26,6 +27,7 @@ const navItems = [
   { path: '/assets', label: '数字资产', icon: FolderKanban },
   { path: '/vault', label: '密码保险箱', icon: KeyRound },
   { path: '/heirs', label: '继承人管理', icon: Users },
+  { path: '/family-graph', label: '家庭关系图谱', icon: Network },
   { path: '/heir-verification', label: '验证中心', icon: BadgeCheck },
   { path: '/will', label: '数字遗嘱', icon: FileText },
   { path: '/will-templates', label: '遗嘱模板库', icon: BookTemplate },

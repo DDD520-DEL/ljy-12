@@ -14,6 +14,7 @@ import Simulation from "@/pages/Simulation";
 import DonationPlanning from "@/pages/DonationPlanning";
 import HeirVerificationCenter from "@/pages/HeirVerificationCenter";
 import AssetCategoryStats from "@/pages/AssetCategoryStats";
+import FamilyGraph from "@/pages/FamilyGraph";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/donation" element={<DonationPlanning />} />
           <Route path="/heir-verification" element={<HeirVerificationCenter />} />
           <Route path="/asset-stats" element={<AssetCategoryStats />} />
+          <Route path="/family-graph" element={<FamilyGraph />} />
         </Route>
       </Routes>
     </Router>
