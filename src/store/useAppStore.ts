@@ -27,6 +27,8 @@ import type {
   BranchCondition,
   EmergencyContact,
   EmergencyContactSettings,
+  TimeCapsule,
+  TimeCapsuleStatus,
 } from '@/types';
 import {
   generateId,
@@ -42,6 +44,7 @@ import {
   addDaysToDate,
   daysSince,
   formatDate,
+  getTimeCapsuleStatus,
 } from '@/constants';
 
 interface AppState {
@@ -136,6 +139,14 @@ interface AppState {
   emergencyContactExtendPeriod: (days: number, note?: string) => void;
   checkEmergencyThreshold: () => void;
   getEmergencyContactStatus: () => { daysInactive: number; thresholdDays: number; isOverThreshold: boolean; confirmationWindowDays: number; daysSinceNotification?: number; isInConfirmationWindow: boolean };
+
+  setTimeCapsule: (assetId: string, capsule: Omit<TimeCapsule, 'createdAt'>) => void;
+  removeTimeCapsule: (assetId: string) => void;
+  unlockTimeCapsule: (assetId: string) => void;
+  autoDecryptExpiredCapsules: () => void;
+  getCapsuleAssets: () => DigitalAsset[];
+  getLockedCapsuleAssets: () => DigitalAsset[];
+  getUnlockedCapsuleAssets: () => DigitalAsset[];
 }
 
 const initialUser: User = {
@@ -204,6 +215,13 @@ const createInitialAssets = (): DigitalAsset[] => [
     lastVerifiedAt: new Date('2024-04-15').toISOString(),
     healthCheckPeriod: '7_days',
     reminderRule: { enabled: true, daysBefore: 3, repeat: true },
+    timeCapsule: {
+      enabled: true,
+      unlockDate: new Date('2028-01-01').toISOString(),
+      status: 'locked',
+      createdAt: new Date('2024-06-01').toISOString(),
+      note: '子女成年后解锁',
+    },
   },
   {
     id: 'asset-004',
@@ -1082,6 +1100,7 @@ export const useAppStore = create<AppState>()(
           title: '数字遗嘱已触发',
           message: '遗嘱执行流程已启动，请按步骤完成资产移交',
         });
+        get().autoDecryptExpiredCapsules();
       },
 
       activateWill: () => {
@@ -2050,6 +2069,150 @@ export const useAppStore = create<AppState>()(
           isInConfirmationWindow,
         };
       },
+
+      setTimeCapsule: (assetId, capsule) => {
+        const asset = get().assets.find((a) => a.id === assetId);
+        if (!asset) return;
+
+        const now = new Date().toISOString();
+        const fullCapsule: TimeCapsule = {
+          ...capsule,
+          createdAt: now,
+        };
+
+        const effectiveStatus = getTimeCapsuleStatus(fullCapsule);
+
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            a.id === assetId
+              ? { ...a, timeCapsule: { ...fullCapsule, status: effectiveStatus }, updatedAt: now }
+              : a
+          ),
+        }));
+
+        const isNew = !asset.timeCapsule?.enabled;
+        get().addAuditLog({
+          action: isNew ? 'time_capsule_created' : 'time_capsule_updated',
+          description: isNew
+            ? `为资产「${asset.name}」创建时间胶囊，解锁日期：${formatDate(fullCapsule.unlockDate)}`
+            : `更新资产「${asset.name}」的时间胶囊设置`,
+          resourceType: 'asset',
+          resourceId: assetId,
+          newValue: JSON.stringify({ unlockDate: fullCapsule.unlockDate, note: fullCapsule.note }),
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: isNew ? '时间胶囊已创建' : '时间胶囊已更新',
+          message: isNew
+            ? `资产「${asset.name}」已设置为时间胶囊，将在 ${formatDate(fullCapsule.unlockDate)} 后解锁`
+            : `资产「${asset.name}」的时间胶囊设置已更新`,
+        });
+      },
+
+      removeTimeCapsule: (assetId) => {
+        const asset = get().assets.find((a) => a.id === assetId);
+        if (!asset || !asset.timeCapsule) return;
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            a.id === assetId
+              ? { ...a, timeCapsule: undefined, updatedAt: now }
+              : a
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'time_capsule_updated',
+          description: `移除资产「${asset.name}」的时间胶囊`,
+          resourceType: 'asset',
+          resourceId: assetId,
+          previousValue: JSON.stringify(asset.timeCapsule),
+        });
+      },
+
+      unlockTimeCapsule: (assetId) => {
+        const asset = get().assets.find((a) => a.id === assetId);
+        if (!asset?.timeCapsule) return;
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          assets: state.assets.map((a) =>
+            a.id === assetId && a.timeCapsule
+              ? { ...a, timeCapsule: { ...a.timeCapsule, status: 'unlocked' }, updatedAt: now }
+              : a
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'time_capsule_unlocked',
+          description: `手动解锁资产「${asset.name}」的时间胶囊`,
+          resourceType: 'asset',
+          resourceId: assetId,
+          previousValue: 'locked',
+          newValue: 'unlocked',
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '时间胶囊已解锁',
+          message: `资产「${asset.name}」的时间胶囊已手动解锁，资产信息已对继承人和见证人可见`,
+        });
+      },
+
+      autoDecryptExpiredCapsules: () => {
+        const { assets, will } = get();
+        if (!will || (will.status !== 'triggered' && will.status !== 'executing')) return;
+
+        let decryptedCount = 0;
+        const now = new Date().toISOString();
+
+        set((state) => ({
+          assets: state.assets.map((a) => {
+            if (!a.timeCapsule?.enabled || a.timeCapsule.status === 'unlocked') return a;
+
+            const effectiveStatus = getTimeCapsuleStatus(a.timeCapsule);
+            if (effectiveStatus === 'expired') {
+              decryptedCount++;
+              return {
+                ...a,
+                timeCapsule: { ...a.timeCapsule, status: 'unlocked' },
+                updatedAt: now,
+              };
+            }
+            return a;
+          }),
+        }));
+
+        if (decryptedCount > 0) {
+          get().addAuditLog({
+            action: 'time_capsule_auto_decrypted',
+            description: `遗嘱执行流程中自动解密 ${decryptedCount} 项已到期的时间胶囊资产`,
+            resourceType: 'will',
+            resourceId: will.id,
+          });
+
+          get().addNotification({
+            type: 'info',
+            title: '时间胶囊自动解密',
+            message: `${decryptedCount} 项时间胶囊资产已到期，在遗嘱执行流程中已自动解密显示`,
+          });
+        }
+      },
+
+      getCapsuleAssets: () => get().assets.filter((a) => a.timeCapsule?.enabled),
+
+      getLockedCapsuleAssets: () => get().assets.filter((a) => {
+        if (!a.timeCapsule?.enabled) return false;
+        return getTimeCapsuleStatus(a.timeCapsule) === 'locked';
+      }),
+
+      getUnlockedCapsuleAssets: () => get().assets.filter((a) => {
+        if (!a.timeCapsule?.enabled) return false;
+        const status = getTimeCapsuleStatus(a.timeCapsule);
+        return status === 'unlocked' || status === 'expired';
+      }),
     }),
     {
       name: 'digital-legacy-storage',

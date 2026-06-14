@@ -92,7 +92,21 @@ export type AuditActionType =
   | 'emergency_contact_confirmed_deceased'
   | 'emergency_contact_triggered_will'
   | 'emergency_contact_extended_period'
-  | 'emergency_settings_updated';
+  | 'emergency_settings_updated'
+  | 'time_capsule_created'
+  | 'time_capsule_updated'
+  | 'time_capsule_unlocked'
+  | 'time_capsule_auto_decrypted';
+
+export type TimeCapsuleStatus = 'locked' | 'unlocked' | 'expired';
+
+export interface TimeCapsule {
+  enabled: boolean;
+  unlockDate: string;
+  status: TimeCapsuleStatus;
+  createdAt: string;
+  note?: string;
+}
 
 export interface DigitalAsset {
   id: string;
@@ -113,6 +127,7 @@ export interface DigitalAsset {
   healthCheckPeriod: HealthCheckPeriod;
   customPeriodDays?: number;
   reminderRule: ReminderRule;
+  timeCapsule?: TimeCapsule;
 }
 
 export interface Heir {

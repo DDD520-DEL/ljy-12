@@ -15,6 +15,7 @@ import {
   Scale,
   ArrowRight,
   Lock,
+  Unlock,
   FolderKanban,
   User,
   Sparkles,
@@ -25,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   Target,
+  Timer,
+  Hourglass,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -46,6 +49,10 @@ import {
   BRANCH_COLORS,
   BRANCH_COLORS_LIGHT,
   BRANCH_COLORS_BORDER,
+  TIME_CAPSULE_STATUS_LABELS,
+  TIME_CAPSULE_STATUS_COLORS,
+  getTimeCapsuleStatus,
+  getDaysUntilUnlock,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { TriggerType, ExecutionStep, WitnessApprovalDecision, Branch, BranchCondition, ConditionField, ConditionOperator } from '@/types';
@@ -67,6 +74,10 @@ export default function Will() {
   const getApprovalGroupProgress = useAppStore((state) => state.getApprovalGroupProgress);
   const getWillExecutionState = useAppStore((state) => state.getWillExecutionState);
   const addNotification = useAppStore((state) => state.addNotification);
+  const autoDecryptExpiredCapsules = useAppStore((state) => state.autoDecryptExpiredCapsules);
+  const getCapsuleAssets = useAppStore((state) => state.getCapsuleAssets);
+  const getLockedCapsuleAssets = useAppStore((state) => state.getLockedCapsuleAssets);
+  const unlockTimeCapsule = useAppStore((state) => state.unlockTimeCapsule);
 
   const [editingStep, setEditingStep] = useState<ExecutionStep | null>(null);
   const [showStepModal, setShowStepModal] = useState(false);
@@ -769,6 +780,126 @@ export default function Will() {
 
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Timer className="w-5 h-5 text-violet-500" />
+          时间胶囊资产
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">
+          带有时间胶囊的资产在解锁日期前对继承人和见证人完全隐藏，到期后在遗嘱执行流程中自动解密并进入分配环节
+        </p>
+        {getCapsuleAssets().length === 0 ? (
+          <div className="text-center py-8">
+            <Hourglass className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">暂无时间胶囊资产</p>
+            <p className="text-xs text-gray-400 mt-1">在资产管理页为资产设置时间胶囊</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {getCapsuleAssets().map((asset) => {
+              const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule!);
+              const daysLeft = getDaysUntilUnlock(asset.timeCapsule!.unlockDate);
+              const isWillTriggered = will?.status === 'triggered' || will?.status === 'executing';
+              return (
+                <div key={asset.id} className={cn(
+                  'rounded-xl p-4 border-l-4',
+                  capsuleStatus === 'locked' ? 'bg-violet-50 border-l-violet-500' :
+                  capsuleStatus === 'expired' ? 'bg-amber-50 border-l-amber-500' :
+                  'bg-emerald-50 border-l-emerald-500'
+                )}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {capsuleStatus === 'locked' ? (
+                        <Lock className="w-4 h-4 text-violet-500" />
+                      ) : capsuleStatus === 'expired' ? (
+                        <Hourglass className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <Unlock className="w-4 h-4 text-emerald-500" />
+                      )}
+                      <span className="font-medium text-gray-900 text-sm">{asset.name}</span>
+                      <span className="text-xs text-gray-500 bg-white px-1.5 py-0.5 rounded">
+                        {ASSET_TYPE_LABELS[asset.type]}
+                      </span>
+                      <span className={cn(
+                        'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                        TIME_CAPSULE_STATUS_COLORS[capsuleStatus]
+                      )}>
+                        {TIME_CAPSULE_STATUS_LABELS[capsuleStatus]}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {asset.value !== undefined && asset.value > 0 && (
+                        <span className="text-sm font-medium text-violet-600">
+                          ¥{asset.value.toLocaleString()}
+                        </span>
+                      )}
+                      {isWillTriggered && capsuleStatus === 'expired' && (
+                        <button
+                          onClick={() => {
+                            unlockTimeCapsule(asset.id);
+                            addNotification({
+                              type: 'success',
+                              title: '时间胶囊已解密',
+                              message: `资产「${asset.name}」已自动解密，进入分配环节`,
+                            });
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors"
+                        >
+                          <Unlock className="w-3 h-3" />
+                          解密并分配
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      解锁日期：{formatDate(asset.timeCapsule!.unlockDate)}
+                    </span>
+                    {capsuleStatus === 'locked' && (
+                      <span className="flex items-center gap-1 text-violet-600">
+                        <Hourglass className="w-3 h-3" />
+                        倒计时：{daysLeft} 天
+                      </span>
+                    )}
+                    {asset.timeCapsule!.note && (
+                      <span className="text-gray-400">备注：{asset.timeCapsule!.note}</span>
+                    )}
+                  </div>
+                  {capsuleStatus === 'locked' && (
+                    <p className="text-[10px] text-violet-500 mt-2 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      此资产对继承人和见证人完全隐藏，到期后自动解密显示
+                    </p>
+                  )}
+                  {capsuleStatus === 'expired' && !isWillTriggered && (
+                    <p className="text-[10px] text-amber-500 mt-2 flex items-center gap-1">
+                      <Hourglass className="w-3 h-3" />
+                      已到期，将在遗嘱执行流程中自动解密
+                    </p>
+                  )}
+                  {capsuleStatus === 'expired' && isWillTriggered && (
+                    <p className="text-[10px] text-emerald-500 mt-2 flex items-center gap-1">
+                      <Unlock className="w-3 h-3" />
+                      已到期且遗嘱已触发，可手动解密进入分配环节
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {getLockedCapsuleAssets().length > 0 && (
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-violet-500" />
+                <p className="text-xs text-violet-700">
+                  <strong>{getLockedCapsuleAssets().length}</strong> 项资产处于锁定状态，
+                  在解锁日期前对继承人和见证人完全隐藏，无法参与资产分配
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <FolderKanban className="w-5 h-5 text-emerald-500" />
           资产分配预览
         </h3>
@@ -781,7 +912,10 @@ export default function Will() {
         ) : (
           <div className="space-y-3">
             {assets.map((asset) => (
-              <div key={asset.id} className="bg-gray-50 rounded-xl p-4">
+              <div key={asset.id} className={cn(
+                'rounded-xl p-4',
+                asset.timeCapsule?.enabled ? 'bg-violet-50 border border-violet-100' : 'bg-gray-50'
+              )}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <FolderKanban className="w-4 h-4 text-gray-400" />
@@ -789,6 +923,18 @@ export default function Will() {
                     <span className="text-xs text-gray-500 bg-white px-1.5 py-0.5 rounded">
                       {ASSET_TYPE_LABELS[asset.type]}
                     </span>
+                    {asset.timeCapsule?.enabled && (() => {
+                      const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule);
+                      return (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                          TIME_CAPSULE_STATUS_COLORS[capsuleStatus]
+                        )}>
+                          {capsuleStatus === 'locked' ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                          {TIME_CAPSULE_STATUS_LABELS[capsuleStatus]}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {asset.value !== undefined && asset.value > 0 && (
                     <span className="text-sm font-medium text-emerald-600">
@@ -836,6 +982,32 @@ export default function Will() {
                     未分配继承人
                   </span>
                 )}
+                {asset.timeCapsule?.enabled && (() => {
+                  const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule);
+                  const daysLeft = getDaysUntilUnlock(asset.timeCapsule.unlockDate);
+                  if (capsuleStatus === 'locked') {
+                    return (
+                      <p className="text-[10px] text-violet-500 mt-1 flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        胶囊锁定中，{daysLeft} 天后解锁，期间对继承人和见证人隐藏
+                      </p>
+                    );
+                  }
+                  if (capsuleStatus === 'expired') {
+                    return (
+                      <p className="text-[10px] text-amber-500 mt-1 flex items-center gap-1">
+                        <Hourglass className="w-3 h-3" />
+                        胶囊已到期，将在遗嘱执行时自动解密
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1">
+                      <Unlock className="w-3 h-3" />
+                      胶囊已解锁，可正常参与分配
+                    </p>
+                  );
+                })()}
               </div>
             ))}
           </div>

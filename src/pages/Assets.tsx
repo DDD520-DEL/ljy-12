@@ -30,6 +30,10 @@ import {
   Layers,
   Check,
   XCircle,
+  Timer,
+  Lock,
+  Unlock,
+  Hourglass,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -44,9 +48,13 @@ import {
   HEALTH_CHECK_PERIOD_LABELS,
   DEFAULT_REMINDER_DAYS,
   formatDate,
+  TIME_CAPSULE_STATUS_LABELS,
+  TIME_CAPSULE_STATUS_COLORS,
+  getTimeCapsuleStatus,
+  getDaysUntilUnlock,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule } from '@/types';
+import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule, TimeCapsuleStatus } from '@/types';
 
 const typeIcons: Record<AssetType, typeof Share2> = {
   social_media: Share2,
@@ -79,13 +87,23 @@ export default function Assets() {
   const bulkUpdateType = useAppStore((state) => state.bulkUpdateType);
   const addAuditLog = useAppStore((state) => state.addAuditLog);
   const addNotification = useAppStore((state) => state.addNotification);
+  const setTimeCapsule = useAppStore((state) => state.setTimeCapsule);
+  const removeTimeCapsule = useAppStore((state) => state.removeTimeCapsule);
+  const unlockTimeCapsule = useAppStore((state) => state.unlockTimeCapsule);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<AssetType | 'all'>('all');
+  const [filterType, setFilterType] = useState<AssetType | 'all' | 'capsule'>('all');
   const [showModal, setShowModal] = useState(false);
   const [showHealthCheckModal, setShowHealthCheckModal] = useState(false);
   const [showBulkHeirModal, setShowBulkHeirModal] = useState(false);
   const [showBulkTypeModal, setShowBulkTypeModal] = useState(false);
+  const [showCapsuleModal, setShowCapsuleModal] = useState(false);
+  const [capsuleAsset, setCapsuleAsset] = useState<DigitalAsset | null>(null);
+  const [capsuleForm, setCapsuleForm] = useState({
+    enabled: true,
+    unlockDate: '',
+    note: '',
+  });
   const [editingAsset, setEditingAsset] = useState<DigitalAsset | null>(null);
   const [healthCheckAsset, setHealthCheckAsset] = useState<DigitalAsset | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -117,7 +135,8 @@ export default function Assets() {
       asset.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       asset.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || asset.type === filterType;
-    return matchesSearch && matchesType;
+    const matchesCapsule = filterType !== 'capsule' || (asset.timeCapsule?.enabled === true);
+    return matchesSearch && matchesType && matchesCapsule;
   });
 
   const selectedAssets = useMemo(
@@ -224,6 +243,53 @@ export default function Assets() {
 
   const handleCloseBulkTypeModal = () => {
     setShowBulkTypeModal(false);
+  };
+
+  const handleOpenCapsuleModal = (asset: DigitalAsset) => {
+    setCapsuleAsset(asset);
+    if (asset.timeCapsule?.enabled) {
+      setCapsuleForm({
+        enabled: asset.timeCapsule.enabled,
+        unlockDate: asset.timeCapsule.unlockDate.split('T')[0],
+        note: asset.timeCapsule.note || '',
+      });
+    } else {
+      setCapsuleForm({
+        enabled: true,
+        unlockDate: '',
+        note: '',
+      });
+    }
+    setShowCapsuleModal(true);
+  };
+
+  const handleCloseCapsuleModal = () => {
+    setShowCapsuleModal(false);
+    setCapsuleAsset(null);
+  };
+
+  const handleCapsuleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!capsuleAsset || !capsuleForm.unlockDate) return;
+    setTimeCapsule(capsuleAsset.id, {
+      enabled: capsuleForm.enabled,
+      unlockDate: new Date(capsuleForm.unlockDate).toISOString(),
+      status: 'locked',
+      note: capsuleForm.note || undefined,
+    });
+    handleCloseCapsuleModal();
+  };
+
+  const handleRemoveCapsule = (assetId: string) => {
+    if (confirm('确定要移除此资产的时间胶囊设置吗？')) {
+      removeTimeCapsule(assetId);
+    }
+  };
+
+  const handleUnlockCapsule = (assetId: string) => {
+    if (confirm('确定要手动解锁此时间胶囊吗？解锁后资产将对继承人和见证人可见。')) {
+      unlockTimeCapsule(assetId);
+    }
   };
 
   const handleBulkHeirSubmit = () => {
@@ -581,6 +647,18 @@ export default function Assets() {
             >
               全部
             </button>
+            <button
+              onClick={() => setFilterType('capsule')}
+              className={cn(
+                'px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1',
+                filterType === 'capsule'
+                  ? 'bg-violet-100 text-violet-700'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              )}
+            >
+              <Timer className="w-3.5 h-3.5" />
+              时间胶囊
+            </button>
             {(Object.keys(ASSET_TYPE_LABELS) as AssetType[]).map((type) => (
               <button
                 key={type}
@@ -678,9 +756,36 @@ export default function Assets() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{asset.name}</h3>
                       <span className="text-xs text-gray-500">{ASSET_TYPE_LABELS[asset.type]}</span>
+                      {asset.timeCapsule?.enabled && (() => {
+                        const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule);
+                        return (
+                          <span className={cn(
+                            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ml-1',
+                            TIME_CAPSULE_STATUS_COLORS[capsuleStatus]
+                          )}>
+                            {capsuleStatus === 'locked' ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                            {TIME_CAPSULE_STATUS_LABELS[capsuleStatus]}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenCapsuleModal(asset);
+                      }}
+                      className={cn(
+                        'p-2 rounded-lg transition-colors',
+                        asset.timeCapsule?.enabled
+                          ? 'text-violet-500 hover:text-violet-700 hover:bg-violet-50'
+                          : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'
+                      )}
+                      title="时间胶囊设置"
+                    >
+                      <Timer className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -741,6 +846,36 @@ export default function Assets() {
                     </span>
                   )}
                 </div>
+
+                {asset.timeCapsule?.enabled && (() => {
+                  const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule);
+                  const daysLeft = getDaysUntilUnlock(asset.timeCapsule.unlockDate);
+                  return (
+                    <div className={cn(
+                      'flex items-center gap-2 mb-4 p-2 rounded-lg border',
+                      capsuleStatus === 'locked' ? 'bg-violet-50 border-violet-200' : 'bg-emerald-50 border-emerald-200'
+                    )}>
+                      <Hourglass className={cn('w-4 h-4', capsuleStatus === 'locked' ? 'text-violet-500' : 'text-emerald-500')} />
+                      <div className="flex-1 min-w-0">
+                        <p className={cn('text-xs font-medium', capsuleStatus === 'locked' ? 'text-violet-700' : 'text-emerald-700')}>
+                          时间胶囊
+                        </p>
+                        <p className="text-[10px] text-gray-500">
+                          {capsuleStatus === 'locked'
+                            ? `解锁倒计时：${daysLeft} 天（${formatDate(asset.timeCapsule.unlockDate)}）`
+                            : capsuleStatus === 'expired'
+                            ? '已到期，等待解密'
+                            : '已解锁'}
+                        </p>
+                      </div>
+                      {asset.timeCapsule.note && (
+                        <p className="text-[10px] text-gray-400 truncate max-w-[100px]" title={asset.timeCapsule.note}>
+                          {asset.timeCapsule.note}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {asset.username && (
                   <div className="mb-2">
@@ -1336,6 +1471,129 @@ export default function Assets() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showCapsuleModal && capsuleAsset && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <Timer className="w-5 h-5 text-violet-500" />
+                时间胶囊设置 - {capsuleAsset.name}
+              </h2>
+              <button
+                onClick={handleCloseCapsuleModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCapsuleSubmit} className="p-6 space-y-4">
+              <div className="bg-violet-50 rounded-xl p-4 border border-violet-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
+                    <Hourglass className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-violet-900">什么是时间胶囊？</p>
+                    <p className="text-xs text-violet-600 mt-0.5">
+                      为资产设置解锁日期，到期前该资产对继承人和见证人完全隐藏，到期后在遗嘱执行流程中自动解密显示
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {capsuleAsset.timeCapsule?.enabled && (
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">当前状态</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        解锁日期：{formatDate(capsuleAsset.timeCapsule.unlockDate)}
+                        {capsuleAsset.timeCapsule.note && ` | 备注：${capsuleAsset.timeCapsule.note}`}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      'px-2 py-1 rounded-full text-xs font-medium',
+                      TIME_CAPSULE_STATUS_COLORS[getTimeCapsuleStatus(capsuleAsset.timeCapsule)]
+                    )}>
+                      {TIME_CAPSULE_STATUS_LABELS[getTimeCapsuleStatus(capsuleAsset.timeCapsule)]}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    {getTimeCapsuleStatus(capsuleAsset.timeCapsule) === 'locked' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleUnlockCapsule(capsuleAsset.id);
+                          handleCloseCapsuleModal();
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white text-sm rounded-lg hover:bg-emerald-600 transition-colors"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        手动解锁
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRemoveCapsule(capsuleAsset.id);
+                        handleCloseCapsuleModal();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      移除胶囊
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">解锁日期 *</label>
+                <input
+                  type="date"
+                  required
+                  value={capsuleForm.unlockDate}
+                  onChange={(e) => setCapsuleForm({ ...capsuleForm, unlockDate: e.target.value })}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  此日期之前，资产信息对继承人和见证人完全隐藏
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">备注（可选）</label>
+                <input
+                  type="text"
+                  value={capsuleForm.note}
+                  onChange={(e) => setCapsuleForm({ ...capsuleForm, note: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  placeholder="例如：子女18岁生日时解锁"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseCapsuleModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+                >
+                  {capsuleAsset.timeCapsule?.enabled ? '更新胶囊' : '创建胶囊'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

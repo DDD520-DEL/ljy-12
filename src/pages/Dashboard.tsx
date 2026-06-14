@@ -18,6 +18,10 @@ import {
   Settings,
   Play,
   CalendarClock,
+  Timer,
+  Lock,
+  Unlock,
+  Hourglass,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -34,6 +38,10 @@ import {
   HEALTH_CHECK_PERIOD_LABELS,
   EMERGENCY_CONTACT_STATUS_LABELS,
   EMERGENCY_CONTACT_STATUS_COLORS,
+  TIME_CAPSULE_STATUS_LABELS,
+  TIME_CAPSULE_STATUS_COLORS,
+  getTimeCapsuleStatus,
+  getDaysUntilUnlock,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 
@@ -57,6 +65,9 @@ export default function Dashboard() {
   const emergencyContactTriggerWill = useAppStore((state) => state.emergencyContactTriggerWill);
   const emergencyContactExtendPeriod = useAppStore((state) => state.emergencyContactExtendPeriod);
   const checkEmergencyThreshold = useAppStore((state) => state.checkEmergencyThreshold);
+  const getCapsuleAssets = useAppStore((state) => state.getCapsuleAssets);
+  const getLockedCapsuleAssets = useAppStore((state) => state.getLockedCapsuleAssets);
+  const getUnlockedCapsuleAssets = useAppStore((state) => state.getUnlockedCapsuleAssets);
 
   const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
   const assignedAssets = assets.filter((a) => a.heirId).length;
@@ -72,6 +83,11 @@ export default function Dashboard() {
   }, {} as Record<string, number>);
 
   const recentLogs = auditLogs.slice(0, 5);
+
+  const capsuleAssets = getCapsuleAssets();
+  const lockedCapsuleAssets = getLockedCapsuleAssets();
+  const unlockedCapsuleAssets = getUnlockedCapsuleAssets();
+  const capsuleAssetValue = capsuleAssets.reduce((sum, a) => sum + (a.value || 0), 0);
 
   const overdueAssets = getOverdueAssets();
   const warningAssets = getWarningAssets();
@@ -174,6 +190,14 @@ export default function Dashboard() {
       subtitle: '估算总价值',
       link: '/assets',
     },
+    {
+      title: '时间胶囊',
+      value: capsuleAssets.length,
+      icon: Timer,
+      color: 'from-violet-500 to-violet-600',
+      subtitle: `${lockedCapsuleAssets.length} 项锁定中，${unlockedCapsuleAssets.length} 项已解锁`,
+      link: '/assets',
+    },
   ];
 
   return (
@@ -196,7 +220,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {statCards.map((card, index) => {
           const Icon = card.icon;
           return (
@@ -420,6 +444,87 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+
+            {capsuleAssets.length > 0 && (
+              <div className="mt-6 rounded-xl border border-violet-200 bg-violet-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Timer className="w-5 h-5 text-violet-600" />
+                    <h3 className="font-semibold text-violet-900">时间胶囊资产</h3>
+                    <span className="text-xs text-violet-600 bg-violet-100 px-2 py-0.5 rounded-full">
+                      {capsuleAssets.length} 项
+                    </span>
+                  </div>
+                  <Link
+                    to="/assets"
+                    className="text-xs text-violet-600 hover:text-violet-700 font-medium flex items-center gap-1"
+                  >
+                    查看详情 <ChevronRight className="w-3 h-3" />
+                  </Link>
+                </div>
+                <p className="text-xs text-violet-600 mb-3">
+                  时间胶囊资产在解锁日期前对继承人和见证人完全隐藏，到期后自动解密进入分配环节
+                </p>
+                <div className="space-y-2">
+                  {capsuleAssets.map((asset) => {
+                    const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule!);
+                    const daysLeft = getDaysUntilUnlock(asset.timeCapsule!.unlockDate);
+                    return (
+                      <div key={asset.id} className="flex items-center justify-between bg-white rounded-lg p-3 border border-violet-100">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center',
+                            capsuleStatus === 'locked' ? 'bg-violet-100' : 'bg-emerald-100'
+                          )}>
+                            {capsuleStatus === 'locked' ? (
+                              <Lock className="w-4 h-4 text-violet-600" />
+                            ) : (
+                              <Unlock className="w-4 h-4 text-emerald-600" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{asset.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                                TIME_CAPSULE_STATUS_COLORS[capsuleStatus]
+                              )}>
+                                {TIME_CAPSULE_STATUS_LABELS[capsuleStatus]}
+                              </span>
+                              <span className="text-[10px] text-gray-500">
+                                {capsuleStatus === 'locked'
+                                  ? `${daysLeft} 天后解锁`
+                                  : capsuleStatus === 'expired'
+                                  ? '已到期，待解密'
+                                  : '已解锁'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        {asset.value !== undefined && asset.value > 0 && (
+                          <span className="text-sm font-medium text-violet-600">
+                            ¥{asset.value.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-4 text-xs text-violet-600">
+                  <span className="flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    锁定中 {lockedCapsuleAssets.length} 项
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Unlock className="w-3 h-3" />
+                    已解锁 {unlockedCapsuleAssets.length} 项
+                  </span>
+                  <span>
+                    胶囊资产估值：¥{capsuleAssetValue.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {assetsNeedingAttention.length > 0 && (

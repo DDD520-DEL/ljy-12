@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -101,6 +101,10 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   emergency_contact_triggered_will: '紧急联系人触发遗嘱',
   emergency_contact_extended_period: '紧急联系人延长观察期',
   emergency_settings_updated: '紧急联系人设置更新',
+  time_capsule_created: '创建时间胶囊',
+  time_capsule_updated: '更新时间胶囊',
+  time_capsule_unlocked: '手动解锁时间胶囊',
+  time_capsule_auto_decrypted: '时间胶囊自动解密',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -372,3 +376,31 @@ export const BRANCH_COLORS_BORDER = [
   'border-l-rose-500',
   'border-l-cyan-500',
 ];
+
+export const TIME_CAPSULE_STATUS_LABELS: Record<TimeCapsuleStatus, string> = {
+  locked: '已锁定',
+  unlocked: '已解锁',
+  expired: '已过期',
+};
+
+export const TIME_CAPSULE_STATUS_COLORS: Record<TimeCapsuleStatus, string> = {
+  locked: 'bg-violet-100 text-violet-700',
+  unlocked: 'bg-emerald-100 text-emerald-700',
+  expired: 'bg-gray-100 text-gray-600',
+};
+
+export const getTimeCapsuleStatus = (capsule: { enabled: boolean; unlockDate: string; status: TimeCapsuleStatus }): TimeCapsuleStatus => {
+  if (!capsule.enabled) return 'unlocked';
+  if (capsule.status === 'unlocked') return 'unlocked';
+  const now = new Date();
+  const unlockDate = new Date(capsule.unlockDate);
+  if (now >= unlockDate) return 'expired';
+  return 'locked';
+};
+
+export const getDaysUntilUnlock = (unlockDate: string): number => {
+  const now = new Date();
+  const target = new Date(unlockDate);
+  const diffTime = target.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+};
