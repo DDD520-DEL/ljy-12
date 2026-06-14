@@ -709,9 +709,3 @@ export interface RecoveryProgress {
 }
 
 export type ShardingAlgorithm = 'shamir' | 'simple_split' | 'hierarchical';
-
-export const SHARDING_ALGORITHM_LABELS: Record<ShardingAlgorithm, string> = {
-  shamir: 'Shamir 秘密共享',
-  simple_split: '简单拆分',
-  hierarchical: '分层分片',
-};

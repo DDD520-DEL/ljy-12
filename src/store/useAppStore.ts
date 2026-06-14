@@ -1297,6 +1297,95 @@ const createInitialAssetNotes = (): AssetNote[] => [
   },
 ];
 
+const generateShamirShards = (
+  masterKey: string,
+  totalShards: number,
+  requiredShards: number
+): string[] => {
+  const SHAMIR_PRIME = (1n << 521n) - 1n;
+
+  const mod = (a: bigint, p: bigint): bigint => {
+    let result = a % p;
+    if (result < 0n) result += p;
+    return result;
+  };
+
+  const seededRandom = (seed: number): (() => number) => {
+    let s = seed;
+    return () => {
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  };
+
+  const rand = seededRandom(masterKey.length * 1000 + totalShards * 100 + requiredShards);
+
+  const randomBigIntSeeded = (max: bigint): bigint => {
+    const bits = max.toString(2).length;
+    const bytes = Math.ceil(bits / 8);
+    let result: bigint;
+    do {
+      result = 0n;
+      for (let i = 0; i < bytes; i++) {
+        result = (result << 8n) | BigInt(Math.floor(rand() * 256));
+      }
+    } while (result >= max);
+    return result;
+  };
+
+  const stringToBigInt = (str: string): bigint => {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(str);
+    let result = 0n;
+    for (let i = 0; i < bytes.length; i++) {
+      result = (result << 8n) | BigInt(bytes[i]);
+    }
+    return result;
+  };
+
+  const keyInt = stringToBigInt(masterKey);
+  const coefficients: bigint[] = [keyInt];
+  for (let i = 1; i < requiredShards; i++) {
+    coefficients.push(randomBigIntSeeded(SHAMIR_PRIME));
+  }
+
+  const evaluatePolynomial = (x: bigint): bigint => {
+    let result = 0n;
+    for (let i = coefficients.length - 1; i >= 0; i--) {
+      result = mod(mod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
+    }
+    return result;
+  };
+
+  const shards: string[] = [];
+  for (let i = 1; i <= totalShards; i++) {
+    const x = BigInt(i);
+    const y = evaluatePolynomial(x);
+    shards.push(`shamir:${i}:${y.toString(16)}`);
+  }
+  return shards;
+};
+
+const generateSimpleShards = (masterKey: string, totalShards: number): string[] => {
+  const shards: string[] = [];
+  const chunkSize = Math.ceil(masterKey.length / totalShards);
+  for (let i = 0; i < totalShards; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, masterKey.length);
+    const chunk = masterKey.slice(start, end).padEnd(chunkSize, '\0');
+    shards.push(`simple:${i + 1}:${btoa(unescape(encodeURIComponent(chunk)))}`);
+  }
+  return shards;
+};
+
+const SAMPLE_BTC_MASTER_KEY = 'BTC-xprv9s21ZrQH143K3QTDL4LXw2F7HEK3';
+const SAMPLE_WX_MASTER_KEY = 'WX-weiXin2024!Recover@Access#Key$';
+const SAMPLE_GMAIL_MASTER_KEY = 'Gmail-2024-Recovery-Password-Key!@#';
+
+const btcShards = generateShamirShards(SAMPLE_BTC_MASTER_KEY, 5, 3);
+const wxShards = generateShamirShards(SAMPLE_WX_MASTER_KEY, 3, 2);
+const gmailShards = generateSimpleShards(SAMPLE_GMAIL_MASTER_KEY, 2);
+
 const createInitialRecoveryKeys = (): RecoveryKey[] => [
   {
     id: 'rkey-001',
@@ -1316,12 +1405,12 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-001',
         shardIndex: 1,
-        shardData: 'shard-data-1-abc123',
+        shardData: btcShards[0],
         recipientId: 'heir-001',
         recipientName: '李芳',
         recipientEmail: 'lifang@example.com',
         recipientType: 'heir',
-        status: 'distributed',
+        status: 'verified',
         distributedAt: new Date('2024-04-16').toISOString(),
         verifiedAt: new Date('2024-04-17').toISOString(),
         verificationCode: '123456',
@@ -1329,12 +1418,12 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-002',
         shardIndex: 2,
-        shardData: 'shard-data-2-def456',
+        shardData: btcShards[1],
         recipientId: 'heir-002',
         recipientName: '张伟',
         recipientEmail: 'zhangwei@example.com',
         recipientType: 'heir',
-        status: 'distributed',
+        status: 'verified',
         distributedAt: new Date('2024-04-16').toISOString(),
         verifiedAt: new Date('2024-04-18').toISOString(),
         verificationCode: '234567',
@@ -1342,12 +1431,12 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-003',
         shardIndex: 3,
-        shardData: 'shard-data-3-ghi789',
+        shardData: btcShards[2],
         recipientId: 'witness-001',
         recipientName: '王律师',
         recipientEmail: 'wanglawyer@lawfirm.com',
         recipientType: 'lawyer',
-        status: 'distributed',
+        status: 'verified',
         distributedAt: new Date('2024-04-16').toISOString(),
         verifiedAt: new Date('2024-04-17').toISOString(),
         verificationCode: '345678',
@@ -1355,7 +1444,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-004',
         shardIndex: 4,
-        shardData: 'shard-data-4-jkl012',
+        shardData: btcShards[3],
         recipientId: 'executor-001',
         recipientName: '王律师',
         recipientEmail: 'wanglawyer@lawfirm.com',
@@ -1365,7 +1454,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-005',
         shardIndex: 5,
-        shardData: 'shard-data-5-mno345',
+        shardData: btcShards[4],
         recipientId: 'witness-002',
         recipientName: '陈刚',
         recipientEmail: 'chengang@example.com',
@@ -1392,12 +1481,12 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-006',
         shardIndex: 1,
-        shardData: 'shard-data-6-pqr678',
+        shardData: wxShards[0],
         recipientId: 'heir-001',
         recipientName: '李芳',
         recipientEmail: 'lifang@example.com',
         recipientType: 'heir',
-        status: 'distributed',
+        status: 'verified',
         distributedAt: new Date('2024-05-11').toISOString(),
         verifiedAt: new Date('2024-05-12').toISOString(),
         verificationCode: '456789',
@@ -1405,7 +1494,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-007',
         shardIndex: 2,
-        shardData: 'shard-data-7-stu901',
+        shardData: wxShards[1],
         recipientId: 'heir-002',
         recipientName: '张伟',
         recipientEmail: 'zhangwei@example.com',
@@ -1415,7 +1504,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-008',
         shardIndex: 3,
-        shardData: 'shard-data-8-vwx234',
+        shardData: wxShards[2],
         recipientId: 'executor-002',
         recipientName: '刘洋',
         recipientEmail: 'liuyang@example.com',
@@ -1440,7 +1529,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-009',
         shardIndex: 1,
-        shardData: 'shard-data-9-yza567',
+        shardData: gmailShards[0],
         recipientId: '',
         recipientName: '',
         recipientEmail: '',
@@ -1450,7 +1539,7 @@ const createInitialRecoveryKeys = (): RecoveryKey[] => [
       {
         id: 'shard-010',
         shardIndex: 2,
-        shardData: 'shard-data-10-bcd890',
+        shardData: gmailShards[1],
         recipientId: '',
         recipientName: '',
         recipientEmail: '',
@@ -4762,39 +4851,201 @@ export const useAppStore = create<AppState>()(
       },
 
       splitKey: (masterKey, totalShards, requiredShards, algorithm) => {
+        if (requiredShards > totalShards) {
+          throw new Error('恢复阈值不能大于总分片数');
+        }
+        if (requiredShards < 1) {
+          throw new Error('恢复阈值至少为1');
+        }
+
         if (algorithm === 'simple_split') {
           const shards: string[] = [];
           const chunkSize = Math.ceil(masterKey.length / totalShards);
           for (let i = 0; i < totalShards; i++) {
             const start = i * chunkSize;
             const end = Math.min(start + chunkSize, masterKey.length);
-            shards.push(`${i + 1}-${masterKey.slice(start, end)}`);
-          }
-          return shards;
-        } else {
-          const shards: string[] = [];
-          for (let i = 0; i < totalShards; i++) {
-            const randomPart = Array.from({ length: 16 }, () =>
-              Math.floor(Math.random() * 16).toString(16)
-            ).join('');
-            shards.push(`${i + 1}-${masterKey.slice(0, 8)}${randomPart}`);
+            const chunk = masterKey.slice(start, end).padEnd(chunkSize, '\0');
+            shards.push(`simple:${i + 1}:${btoa(unescape(encodeURIComponent(chunk)))}`);
           }
           return shards;
         }
+
+        if (algorithm === 'hierarchical' || algorithm === 'shamir') {
+          const SHAMIR_PRIME = (1n << 521n) - 1n;
+
+          const mod = (a: bigint, p: bigint): bigint => {
+            let result = a % p;
+            if (result < 0n) result += p;
+            return result;
+          };
+
+          const modPow = (base: bigint, exp: bigint, p: bigint): bigint => {
+            let result = 1n;
+            base = mod(base, p);
+            while (exp > 0n) {
+              if (exp % 2n === 1n) {
+                result = mod(result * base, p);
+              }
+              exp = exp / 2n;
+              base = mod(base * base, p);
+            }
+            return result;
+          };
+
+          const modInverse = (a: bigint, p: bigint): bigint => {
+            return modPow(a, p - 2n, p);
+          };
+
+          const randomBigInt = (max: bigint): bigint => {
+            const bits = max.toString(2).length;
+            const bytes = Math.ceil(bits / 8);
+            let result: bigint;
+            do {
+              result = 0n;
+              for (let i = 0; i < bytes; i++) {
+                result = (result << 8n) | BigInt(Math.floor(Math.random() * 256));
+              }
+            } while (result >= max);
+            return result;
+          };
+
+          const stringToBigInt = (str: string): bigint => {
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(str);
+            let result = 0n;
+            for (let i = 0; i < bytes.length; i++) {
+              result = (result << 8n) | BigInt(bytes[i]);
+            }
+            return result;
+          };
+
+          const keyInt = stringToBigInt(masterKey);
+          if (keyInt >= SHAMIR_PRIME) {
+            throw new Error('主密钥过大，无法进行Shamir分片');
+          }
+
+          const coefficients: bigint[] = [keyInt];
+          for (let i = 1; i < requiredShards; i++) {
+            coefficients.push(randomBigInt(SHAMIR_PRIME));
+          }
+
+          const evaluatePolynomial = (x: bigint): bigint => {
+            let result = 0n;
+            for (let i = coefficients.length - 1; i >= 0; i--) {
+              result = mod(mod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
+            }
+            return result;
+          };
+
+          const shards: string[] = [];
+          for (let i = 1; i <= totalShards; i++) {
+            const x = BigInt(i);
+            const y = evaluatePolynomial(x);
+            shards.push(`shamir:${i}:${y.toString(16)}`);
+          }
+          return shards;
+        }
+
+        return [];
       },
 
       combineShards: (shards, algorithm) => {
         if (shards.length === 0) return null;
-        if (algorithm === 'simple_split') {
-          const sorted = [...shards].sort((a, b) => {
-            const aIdx = parseInt(a.split('-')[0]);
-            const bIdx = parseInt(b.split('-')[0]);
-            return aIdx - bIdx;
-          });
-          return sorted.map((s) => s.split('-').slice(1).join('-')).join('');
-        } else {
-          return shards[0].split('-')[1].slice(0, 8).padEnd(32, '*');
+
+        const firstShard = shards[0];
+        const shardType = firstShard.split(':')[0];
+
+        if (algorithm === 'simple_split' || shardType === 'simple') {
+          const parsedShards = shards
+            .map((s) => {
+              const parts = s.split(':');
+              if (parts.length < 3) return null;
+              const idx = parseInt(parts[1]);
+              const data = parts.slice(2).join(':');
+              if (isNaN(idx)) return null;
+              try {
+                const decoded = decodeURIComponent(escape(atob(data)));
+                return { idx, data: decoded };
+              } catch {
+                return null;
+              }
+            })
+            .filter((s): s is { idx: number; data: string } => s !== null)
+            .sort((a, b) => a.idx - b.idx);
+
+          if (parsedShards.length === 0) return null;
+          const result = parsedShards.map((s) => s.data).join('');
+          return result.replace(/\0+$/, '');
         }
+
+        if (algorithm === 'hierarchical' || algorithm === 'shamir' || shardType === 'shamir') {
+          const SHAMIR_PRIME = (1n << 521n) - 1n;
+
+          const mod = (a: bigint, p: bigint): bigint => {
+            let result = a % p;
+            if (result < 0n) result += p;
+            return result;
+          };
+
+          const modInverse = (a: bigint, p: bigint): bigint => {
+            let exp = p - 2n;
+            let base = mod(a, p);
+            let result = 1n;
+            while (exp > 0n) {
+              if (exp % 2n === 1n) {
+                result = mod(result * base, p);
+              }
+              exp = exp / 2n;
+              base = mod(base * base, p);
+            }
+            return result;
+          };
+
+          const bigIntToString = (num: bigint): string => {
+            const hex = num.toString(16);
+            const paddedHex = hex.length % 2 === 0 ? hex : '0' + hex;
+            const bytes: number[] = [];
+            for (let i = 0; i < paddedHex.length; i += 2) {
+              bytes.push(parseInt(paddedHex.substr(i, 2), 16));
+            }
+            const decoder = new TextDecoder();
+            return decoder.decode(new Uint8Array(bytes));
+          };
+
+          const parsedShards = shards
+            .map((s) => {
+              const parts = s.split(':');
+              if (parts.length < 3) return null;
+              const x = BigInt(parseInt(parts[1]));
+              const y = BigInt('0x' + parts.slice(2).join(':'));
+              if (!x || !y) return null;
+              return { x, y };
+            })
+            .filter((s): s is { x: bigint; y: bigint } => s !== null);
+
+          if (parsedShards.length === 0) return null;
+
+          const lagrangeInterpolate = (points: { x: bigint; y: bigint }[], at: bigint): bigint => {
+            let secret = 0n;
+            for (let i = 0; i < points.length; i++) {
+              let numerator = 1n;
+              let denominator = 1n;
+              for (let j = 0; j < points.length; j++) {
+                if (i === j) continue;
+                numerator = mod(numerator * (at - points[j].x), SHAMIR_PRIME);
+                denominator = mod(denominator * (points[i].x - points[j].x), SHAMIR_PRIME);
+              }
+              const lagrangeCoeff = mod(numerator * modInverse(denominator, SHAMIR_PRIME), SHAMIR_PRIME);
+              secret = mod(secret + mod(points[i].y * lagrangeCoeff, SHAMIR_PRIME), SHAMIR_PRIME);
+            }
+            return secret;
+          };
+
+          const secretInt = lagrangeInterpolate(parsedShards, 0n);
+          return bigIntToString(secretInt);
+        }
+
+        return null;
       },
 
       getAvailableRecipients: () => {
