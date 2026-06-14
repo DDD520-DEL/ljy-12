@@ -45,6 +45,7 @@ import {
   WILL_TEMPLATE_DIFFICULTY_COLORS,
   TRIGGER_TYPE_LABELS,
   formatDate,
+  generateId,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { WillTemplate, ExecutionStep } from '@/types';
@@ -124,10 +125,22 @@ export default function WillTemplates() {
   const handleApplyTemplate = async (template: WillTemplate) => {
     setApplying(true);
 
-    const newSteps = template.willConfig.executionSteps.map((step) => ({
-      ...step,
-      id: '',
-    }));
+    const newSteps = template.willConfig.executionSteps.map((step) => {
+      const newBranches = step.branches?.map((branch) => ({
+        ...branch,
+        id: generateId(),
+        conditions: branch.conditions.map((cond) => ({
+          ...cond,
+          id: generateId(),
+        })),
+      }));
+
+      return {
+        ...step,
+        id: generateId(),
+        branches: newBranches,
+      };
+    });
 
     updateWill({
       title: template.willConfig.title,
