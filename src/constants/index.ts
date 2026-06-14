@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -105,6 +105,16 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   time_capsule_updated: '更新时间胶囊',
   time_capsule_unlocked: '手动解锁时间胶囊',
   time_capsule_auto_decrypted: '时间胶囊自动解密',
+  credential_created: '创建凭据',
+  credential_updated: '更新凭据',
+  credential_deleted: '删除凭据',
+  credential_viewed: '查看凭据元数据',
+  credential_revealed: '揭露凭据明文',
+  credential_decrypted_for_heir: '向继承人解密凭据',
+  master_password_set: '设置主密码',
+  master_password_changed: '修改主密码',
+  vault_locked: '锁定保险箱',
+  vault_unlocked: '解锁保险箱',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -416,9 +426,55 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   emergency_contact: '紧急联系人',
   settings: '系统设置',
   time_capsule: '时间胶囊',
+  credential: '凭据',
+  vault: '密码保险箱',
 };
 
 export const getResourceTypeLabel = (type?: string): string => {
   if (!type) return '未分类';
   return RESOURCE_TYPE_LABELS[type] || type;
 };
+
+export const CREDENTIAL_CATEGORY_LABELS: Record<CredentialCategory, string> = {
+  password: '账号密码',
+  recovery_key: '恢复密钥',
+  api_key: 'API 密钥',
+  seed_phrase: '助记词',
+  pin_code: 'PIN 码',
+  security_question: '安全问题',
+  certificate: '数字证书',
+  other: '其他凭据',
+};
+
+export const CREDENTIAL_CATEGORY_COLORS: Record<CredentialCategory, string> = {
+  password: 'bg-blue-100 text-blue-700',
+  recovery_key: 'bg-amber-100 text-amber-700',
+  api_key: 'bg-purple-100 text-purple-700',
+  seed_phrase: 'bg-emerald-100 text-emerald-700',
+  pin_code: 'bg-rose-100 text-rose-700',
+  security_question: 'bg-cyan-100 text-cyan-700',
+  certificate: 'bg-indigo-100 text-indigo-700',
+  other: 'bg-gray-100 text-gray-700',
+};
+
+export const CREDENTIAL_ACCESS_LEVEL_LABELS: Record<CredentialAccessLevel, string> = {
+  owner_only: '仅所有者可见',
+  heir_step_1: '继承人第1步解锁',
+  heir_step_2: '继承人第2步解锁',
+  heir_step_3: '继承人第3步解锁',
+  witness_only: '仅见证人可见',
+  lawyer_only: '仅律师可见',
+};
+
+export const CREDENTIAL_ACCESS_LEVEL_COLORS: Record<CredentialAccessLevel, string> = {
+  owner_only: 'bg-slate-100 text-slate-700',
+  heir_step_1: 'bg-green-100 text-green-700',
+  heir_step_2: 'bg-yellow-100 text-yellow-700',
+  heir_step_3: 'bg-orange-100 text-orange-700',
+  witness_only: 'bg-blue-100 text-blue-700',
+  lawyer_only: 'bg-purple-100 text-purple-700',
+};
+
+export const DEFAULT_AUTO_LOCK_MINUTES = 5;
+export const MAX_FAILED_ATTEMPTS = 5;
+export const LOCKOUT_MINUTES = 30;

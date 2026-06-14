@@ -3,6 +3,7 @@ import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Reports from "@/pages/Reports";
 import Assets from "@/pages/Assets";
+import PasswordVault from "@/pages/PasswordVault";
 import Heirs from "@/pages/Heirs";
 import Will from "@/pages/Will";
 import MFA from "@/pages/MFA";
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/assets" element={<Assets />} />
+          <Route path="/vault" element={<PasswordVault />} />
           <Route path="/heirs" element={<Heirs />} />
           <Route path="/will" element={<Will />} />
           <Route path="/simulation" element={<Simulation />} />

@@ -29,6 +29,11 @@ import type {
   EmergencyContactSettings,
   TimeCapsule,
   TimeCapsuleStatus,
+  Credential,
+  CredentialField,
+  CredentialCategory,
+  CredentialAccessLevel,
+  VaultState,
 } from '@/types';
 import {
   generateId,
@@ -45,6 +50,8 @@ import {
   daysSince,
   formatDate,
   getTimeCapsuleStatus,
+  DEFAULT_AUTO_LOCK_MINUTES,
+  CREDENTIAL_CATEGORY_LABELS,
 } from '@/constants';
 
 interface AppState {
@@ -58,6 +65,8 @@ interface AppState {
   notifications: Notification[];
   emergencyContact: EmergencyContact | null;
   emergencySettings: EmergencyContactSettings;
+  credentials: Credential[];
+  vault: VaultState;
 
   setCurrentUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
@@ -147,6 +156,22 @@ interface AppState {
   getCapsuleAssets: () => DigitalAsset[];
   getLockedCapsuleAssets: () => DigitalAsset[];
   getUnlockedCapsuleAssets: () => DigitalAsset[];
+
+  addCredential: (credential: Omit<Credential, 'id' | 'createdAt' | 'updatedAt' | 'isEncrypted'> & { fields: Omit<CredentialField, 'id'>[] }) => void;
+  updateCredential: (id: string, updates: Partial<Omit<Credential, 'id' | 'createdAt'>>) => void;
+  deleteCredential: (id: string) => void;
+  getCredentialsByAsset: (assetId: string) => Credential[];
+  getCredentialsByCategory: (category: CredentialCategory) => Credential[];
+  markCredentialAccessed: (id: string) => void;
+  revealCredential: (id: string) => CredentialField[] | null;
+
+  setMasterPassword: (password: string, hint?: string) => boolean;
+  changeMasterPassword: (oldPassword: string, newPassword: string, hint?: string) => boolean;
+  verifyMasterPassword: (password: string) => boolean;
+  unlockVault: (password: string) => boolean;
+  lockVault: () => void;
+  updateVaultAutoLock: (minutes: number) => void;
+  getDecryptedCredentialsForHeir: (heirId: string, executionStep: number) => Credential[];
 }
 
 const initialUser: User = {
@@ -588,6 +613,107 @@ const createInitialNotifications = (): Notification[] => [
   },
 ];
 
+const createInitialCredentials = (): Credential[] => [
+  {
+    id: 'cred-001',
+    assetId: 'asset-001',
+    name: '微信登录密码',
+    category: 'password',
+    description: '微信账号主登录密码，包含支付密码',
+    fields: [
+      { id: 'f-001', label: '登录密码', value: 'Weixin@2024#Secure', type: 'password', isSensitive: true },
+      { id: 'f-002', label: '支付密码', value: '886622', type: 'password', isSensitive: true },
+    ],
+    accessLevel: 'heir_step_1',
+    heirChainOrder: 1,
+    revealDelayDays: 7,
+    isEncrypted: true,
+    createdAt: new Date('2024-01-20').toISOString(),
+    updatedAt: new Date('2024-01-20').toISOString(),
+    lastAccessedAt: new Date('2024-06-01').toISOString(),
+    tags: ['重要', '社交媒体'],
+  },
+  {
+    id: 'cred-002',
+    assetId: 'asset-003',
+    name: '比特币钱包恢复助记词',
+    category: 'seed_phrase',
+    description: '冷钱包 BIP39 助记词，共24个单词',
+    fields: [
+      { id: 'f-003', label: '助记词', value: 'abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual', type: 'textarea', isSensitive: true },
+    ],
+    accessLevel: 'heir_step_2',
+    heirChainOrder: 2,
+    revealDelayDays: 30,
+    isEncrypted: true,
+    createdAt: new Date('2024-03-10').toISOString(),
+    updatedAt: new Date('2024-03-10').toISOString(),
+    lastAccessedAt: new Date('2024-05-15').toISOString(),
+    tags: ['加密货币', '最高权限'],
+  },
+  {
+    id: 'cred-003',
+    assetId: 'asset-002',
+    name: '百度网盘账号密码',
+    category: 'password',
+    description: '百度网盘登录凭证，约2TB家庭照片',
+    fields: [
+      { id: 'f-004', label: '账号', value: 'zhangming@example.com', type: 'text', isSensitive: false },
+      { id: 'f-005', label: '密码', value: 'BaiduPan!Family2024', type: 'password', isSensitive: true },
+    ],
+    accessLevel: 'heir_step_1',
+    heirChainOrder: 1,
+    revealDelayDays: 7,
+    isEncrypted: true,
+    createdAt: new Date('2024-02-15').toISOString(),
+    updatedAt: new Date('2024-02-15').toISOString(),
+    tags: ['家庭相册'],
+  },
+  {
+    id: 'cred-004',
+    assetId: 'asset-005',
+    name: 'Gmail 两步验证恢复密钥',
+    category: 'recovery_key',
+    description: 'Google 账号 2FA 恢复代码，用于紧急恢复访问',
+    fields: [
+      { id: 'f-006', label: '恢复代码 1', value: 'ABCD-1234-EFGH-5678', type: 'text', isSensitive: true },
+      { id: 'f-007', label: '恢复代码 2', value: 'IJKL-9012-MNOP-3456', type: 'text', isSensitive: true },
+      { id: 'f-008', label: '恢复代码 3', value: 'QRST-7890-UVWX-1234', type: 'text', isSensitive: true },
+    ],
+    accessLevel: 'heir_step_1',
+    heirChainOrder: 1,
+    revealDelayDays: 7,
+    isEncrypted: true,
+    createdAt: new Date('2024-04-05').toISOString(),
+    updatedAt: new Date('2024-04-05').toISOString(),
+    tags: ['邮箱', '重要'],
+  },
+  {
+    id: 'cred-005',
+    name: '银行保险柜钥匙存放位置',
+    category: 'other',
+    description: '存放比特币硬件钱包和重要文件的银行保险柜信息',
+    fields: [
+      { id: 'f-009', label: '银行名称', value: '中国工商银行北京分行营业部', type: 'text', isSensitive: false },
+      { id: 'f-010', label: '保险柜编号', value: 'A-2088', type: 'text', isSensitive: true },
+      { id: 'f-011', label: '钥匙存放', value: '家中书房抽屉密码盒内（密码1984）', type: 'textarea', isSensitive: true },
+    ],
+    accessLevel: 'lawyer_only',
+    revealDelayDays: 0,
+    isEncrypted: true,
+    createdAt: new Date('2024-05-01').toISOString(),
+    updatedAt: new Date('2024-05-01').toISOString(),
+    tags: ['实物', '律师见证'],
+  },
+];
+
+const createInitialVaultState = (): VaultState => ({
+  isUnlocked: false,
+  masterPassword: null,
+  failedAttempts: 0,
+  autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
+});
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -605,6 +731,8 @@ export const useAppStore = create<AppState>()(
         thresholdDays: DEFAULT_EMERGENCY_THRESHOLD_DAYS,
         confirmationWindowDays: DEFAULT_EMERGENCY_CONFIRMATION_WINDOW,
       },
+      credentials: createInitialCredentials(),
+      vault: createInitialVaultState(),
 
       setCurrentUser: (user) => set({ currentUser: user }),
 
@@ -2306,6 +2434,370 @@ export const useAppStore = create<AppState>()(
         const status = getTimeCapsuleStatus(a.timeCapsule);
         return status === 'unlocked' || status === 'expired';
       }),
+
+      addCredential: (credential) => {
+        const { vault, addAuditLog, addNotification } = get();
+        if (!vault.isUnlocked && vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '操作失败',
+            message: '请先解锁密码保险箱',
+          });
+          return;
+        }
+        const now = new Date().toISOString();
+        const newCredential: Credential = {
+          ...credential,
+          id: generateId(),
+          fields: credential.fields.map((f) => ({ ...f, id: generateId() })),
+          isEncrypted: true,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ credentials: [newCredential, ...state.credentials] }));
+        addAuditLog({
+          action: 'credential_created',
+          description: `创建${CREDENTIAL_CATEGORY_LABELS[credential.category]}：${credential.name}${credential.assetId ? `（关联资产）` : ''}`,
+          resourceType: 'credential',
+          resourceId: newCredential.id,
+          newValue: JSON.stringify({ category: credential.category, fieldsCount: credential.fields.length }),
+        });
+        addNotification({
+          type: 'success',
+          title: '凭据已添加',
+          message: `凭据「${credential.name}」已安全加密存储`,
+        });
+      },
+
+      updateCredential: (id, updates) => {
+        const { vault, credentials, addAuditLog, addNotification } = get();
+        if (!vault.isUnlocked && vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '操作失败',
+            message: '请先解锁密码保险箱',
+          });
+          return;
+        }
+        const credential = credentials.find((c) => c.id === id);
+        if (!credential) return;
+        const now = new Date().toISOString();
+        set((state) => ({
+          credentials: state.credentials.map((c) =>
+            c.id === id ? { ...c, ...updates, updatedAt: now } : c
+          ),
+        }));
+        addAuditLog({
+          action: 'credential_updated',
+          description: `更新凭据：${credential.name}`,
+          resourceType: 'credential',
+          resourceId: id,
+          previousValue: JSON.stringify(credential),
+          newValue: JSON.stringify({ ...credential, ...updates }),
+        });
+        addNotification({
+          type: 'success',
+          title: '凭据已更新',
+          message: `凭据「${credential.name}」的信息已更新`,
+        });
+      },
+
+      deleteCredential: (id) => {
+        const { vault, credentials, addAuditLog, addNotification } = get();
+        if (!vault.isUnlocked && vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '操作失败',
+            message: '请先解锁密码保险箱',
+          });
+          return;
+        }
+        const credential = credentials.find((c) => c.id === id);
+        set((state) => ({
+          credentials: state.credentials.filter((c) => c.id !== id),
+        }));
+        if (credential) {
+          addAuditLog({
+            action: 'credential_deleted',
+            description: `删除凭据：${credential.name}`,
+            resourceType: 'credential',
+            resourceId: id,
+            previousValue: JSON.stringify({ name: credential.name, category: credential.category }),
+          });
+          addNotification({
+            type: 'info',
+            title: '凭据已删除',
+            message: `凭据「${credential.name}」已从保险箱移除`,
+          });
+        }
+      },
+
+      getCredentialsByAsset: (assetId) => get().credentials.filter((c) => c.assetId === assetId),
+
+      getCredentialsByCategory: (category) => get().credentials.filter((c) => c.category === category),
+
+      markCredentialAccessed: (id) => {
+        const { addAuditLog, credentials } = get();
+        const credential = credentials.find((c) => c.id === id);
+        if (!credential) return;
+        const now = new Date().toISOString();
+        set((state) => ({
+          credentials: state.credentials.map((c) =>
+            c.id === id ? { ...c, lastAccessedAt: now } : c
+          ),
+        }));
+        addAuditLog({
+          action: 'credential_viewed',
+          description: `查看凭据元数据：${credential.name}`,
+          resourceType: 'credential',
+          resourceId: id,
+        });
+      },
+
+      revealCredential: (id) => {
+        const { vault, credentials, addAuditLog, addNotification } = get();
+        if (!vault.isUnlocked && vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '操作失败',
+            message: '请先解锁密码保险箱',
+          });
+          return null;
+        }
+        const credential = credentials.find((c) => c.id === id);
+        if (!credential) return null;
+        addAuditLog({
+          action: 'credential_revealed',
+          description: `揭露凭据明文内容：${credential.name}`,
+          resourceType: 'credential',
+          resourceId: id,
+          newValue: JSON.stringify({ fields: credential.fields.map((f) => ({ id: f.id, label: f.label, isSensitive: f.isSensitive })) }),
+        });
+        return credential.fields;
+      },
+
+      setMasterPassword: (password, hint) => {
+        const { addAuditLog, addNotification, vault } = get();
+        if (vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '设置失败',
+            message: '主密码已存在，请使用修改功能',
+          });
+          return false;
+        }
+        if (password.length < 8) {
+          addNotification({
+            type: 'error',
+            title: '密码过短',
+            message: '主密码至少需要8个字符',
+          });
+          return false;
+        }
+        const now = new Date().toISOString();
+        const salt = generateId();
+        const hash = generateHash(password + salt);
+        set((state) => ({
+          vault: {
+            ...state.vault,
+            masterPassword: {
+              hash,
+              salt,
+              createdAt: now,
+              lastChangedAt: now,
+              hint,
+            },
+            isUnlocked: true,
+            unlockedAt: now,
+            failedAttempts: 0,
+          },
+        }));
+        addAuditLog({
+          action: 'master_password_set',
+          description: '已设置主密码，保险箱加密功能已启用',
+          resourceType: 'vault',
+        });
+        addNotification({
+          type: 'success',
+          title: '主密码已设置',
+          message: '请务必牢记主密码，一旦丢失无法恢复',
+        });
+        return true;
+      },
+
+      changeMasterPassword: (oldPassword, newPassword, hint) => {
+        const { vault, addAuditLog, addNotification } = get();
+        if (!vault.masterPassword) {
+          addNotification({
+            type: 'error',
+            title: '修改失败',
+            message: '尚未设置主密码',
+          });
+          return false;
+        }
+        const oldHash = generateHash(oldPassword + vault.masterPassword.salt);
+        if (oldHash !== vault.masterPassword.hash) {
+          set((state) => ({
+            vault: { ...state.vault, failedAttempts: state.vault.failedAttempts + 1 },
+          }));
+          addNotification({
+            type: 'error',
+            title: '验证失败',
+            message: '原密码不正确',
+          });
+          return false;
+        }
+        if (newPassword.length < 8) {
+          addNotification({
+            type: 'error',
+            title: '新密码过短',
+            message: '主密码至少需要8个字符',
+          });
+          return false;
+        }
+        const now = new Date().toISOString();
+        const salt = generateId();
+        const hash = generateHash(newPassword + salt);
+        set((state) => ({
+          vault: {
+            ...state.vault,
+            masterPassword: {
+              hash,
+              salt,
+              createdAt: state.vault.masterPassword!.createdAt,
+              lastChangedAt: now,
+              hint: hint ?? state.vault.masterPassword!.hint,
+            },
+            failedAttempts: 0,
+          },
+        }));
+        addAuditLog({
+          action: 'master_password_changed',
+          description: '主密码已修改',
+          resourceType: 'vault',
+        });
+        addNotification({
+          type: 'success',
+          title: '主密码已修改',
+          message: '请妥善保管新的主密码',
+        });
+        return true;
+      },
+
+      verifyMasterPassword: (password) => {
+        const { vault } = get();
+        if (!vault.masterPassword) return true;
+        const hash = generateHash(password + vault.masterPassword.salt);
+        return hash === vault.masterPassword.hash;
+      },
+
+      unlockVault: (password) => {
+        const { vault, addAuditLog, addNotification } = get();
+        if (!vault.masterPassword) {
+          set((state) => ({
+            vault: { ...state.vault, isUnlocked: true, unlockedAt: new Date().toISOString() },
+          }));
+          return true;
+        }
+        const hash = generateHash(password + vault.masterPassword.salt);
+        if (hash === vault.masterPassword.hash) {
+          const now = new Date().toISOString();
+          set((state) => ({
+            vault: { ...state.vault, isUnlocked: true, unlockedAt: now, failedAttempts: 0 },
+          }));
+          addAuditLog({
+            action: 'vault_unlocked',
+            description: '密码保险箱已解锁',
+            resourceType: 'vault',
+          });
+          return true;
+        } else {
+          const newAttempts = vault.failedAttempts + 1;
+          let lockUntil: string | undefined;
+          if (newAttempts >= 5) {
+            const lockTime = new Date();
+            lockTime.setMinutes(lockTime.getMinutes() + 30);
+            lockUntil = lockTime.toISOString();
+          }
+          set((state) => ({
+            vault: { ...state.vault, failedAttempts: newAttempts, lockUntil },
+          }));
+          addNotification({
+            type: 'error',
+            title: '解锁失败',
+            message: lockUntil
+              ? `尝试次数过多，保险箱已锁定30分钟`
+              : `密码错误，还剩 ${5 - newAttempts} 次尝试机会`,
+          });
+          return false;
+        }
+      },
+
+      lockVault: () => {
+        const { addAuditLog } = get();
+        set((state) => ({
+          vault: { ...state.vault, isUnlocked: false, unlockedAt: undefined },
+        }));
+        addAuditLog({
+          action: 'vault_locked',
+          description: '密码保险箱已锁定',
+          resourceType: 'vault',
+        });
+      },
+
+      updateVaultAutoLock: (minutes) => {
+        set((state) => ({
+          vault: { ...state.vault, autoLockMinutes: minutes },
+        }));
+      },
+
+      getDecryptedCredentialsForHeir: (heirId, executionStep) => {
+        const { credentials, addAuditLog, will, assets } = get();
+        const result: Credential[] = [];
+
+        credentials.forEach((credential) => {
+          let shouldReveal = false;
+
+          if (credential.accessLevel === 'owner_only') {
+            shouldReveal = false;
+          } else if (credential.accessLevel === 'lawyer_only') {
+            shouldReveal = executionStep >= 1;
+          } else if (credential.accessLevel === 'witness_only') {
+            shouldReveal = executionStep >= 1;
+          } else if (credential.accessLevel === 'heir_step_1') {
+            shouldReveal = executionStep >= 1;
+          } else if (credential.accessLevel === 'heir_step_2') {
+            shouldReveal = executionStep >= 2;
+          } else if (credential.accessLevel === 'heir_step_3') {
+            shouldReveal = executionStep >= 3;
+          }
+
+          if (shouldReveal && credential.assetId) {
+            const asset = assets.find((a) => a.id === credential.assetId);
+            if (asset && asset.heirChain[0] === heirId) {
+              result.push(credential);
+              addAuditLog({
+                action: 'credential_decrypted_for_heir',
+                description: `遗嘱执行阶段 ${executionStep}：向继承人解密凭据「${credential.name}」`,
+                resourceType: 'credential',
+                resourceId: credential.id,
+                newValue: JSON.stringify({ heirId, executionStep }),
+              });
+            }
+          } else if (shouldReveal && !credential.assetId) {
+            result.push(credential);
+            addAuditLog({
+              action: 'credential_decrypted_for_heir',
+              description: `遗嘱执行阶段 ${executionStep}：向继承人解密凭据「${credential.name}」`,
+              resourceType: 'credential',
+              resourceId: credential.id,
+              newValue: JSON.stringify({ heirId, executionStep }),
+            });
+          }
+        });
+
+        return result;
+      },
     }),
     {
       name: 'digital-legacy-storage',

@@ -96,7 +96,17 @@ export type AuditActionType =
   | 'time_capsule_created'
   | 'time_capsule_updated'
   | 'time_capsule_unlocked'
-  | 'time_capsule_auto_decrypted';
+  | 'time_capsule_auto_decrypted'
+  | 'credential_created'
+  | 'credential_updated'
+  | 'credential_deleted'
+  | 'credential_viewed'
+  | 'credential_revealed'
+  | 'credential_decrypted_for_heir'
+  | 'master_password_set'
+  | 'master_password_changed'
+  | 'vault_locked'
+  | 'vault_unlocked';
 
 export type TimeCapsuleStatus = 'locked' | 'unlocked' | 'expired';
 
@@ -352,4 +362,52 @@ export interface SimulationState {
   report: SimulationReport | null;
   isPlaying: boolean;
   playSpeed: number;
+}
+
+export type CredentialCategory = 'password' | 'recovery_key' | 'api_key' | 'seed_phrase' | 'pin_code' | 'security_question' | 'certificate' | 'other';
+
+export type CredentialAccessLevel = 'owner_only' | 'heir_step_1' | 'heir_step_2' | 'heir_step_3' | 'witness_only' | 'lawyer_only';
+
+export interface CredentialField {
+  id: string;
+  label: string;
+  value: string;
+  type: 'text' | 'password' | 'textarea';
+  isSensitive: boolean;
+}
+
+export interface Credential {
+  id: string;
+  assetId?: string;
+  name: string;
+  category: CredentialCategory;
+  description?: string;
+  fields: CredentialField[];
+  accessLevel: CredentialAccessLevel;
+  heirChainOrder?: number;
+  revealDelayDays: number;
+  isEncrypted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastAccessedAt?: string;
+  lastModifiedBy?: string;
+  tags?: string[];
+}
+
+export interface MasterPassword {
+  hash: string;
+  salt: string;
+  createdAt: string;
+  lastChangedAt: string;
+  hint?: string;
+  recoveryKeyHash?: string;
+}
+
+export interface VaultState {
+  isUnlocked: boolean;
+  unlockedAt?: string;
+  masterPassword: MasterPassword | null;
+  failedAttempts: number;
+  lockUntil?: string;
+  autoLockMinutes: number;
 }

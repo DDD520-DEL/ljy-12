@@ -34,6 +34,7 @@ import {
   Lock,
   Unlock,
   Hourglass,
+  KeyRound,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -52,6 +53,7 @@ import {
   TIME_CAPSULE_STATUS_COLORS,
   getTimeCapsuleStatus,
   getDaysUntilUnlock,
+  CREDENTIAL_CATEGORY_LABELS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule, TimeCapsuleStatus } from '@/types';
@@ -90,6 +92,8 @@ export default function Assets() {
   const setTimeCapsule = useAppStore((state) => state.setTimeCapsule);
   const removeTimeCapsule = useAppStore((state) => state.removeTimeCapsule);
   const unlockTimeCapsule = useAppStore((state) => state.unlockTimeCapsule);
+  const credentials = useAppStore((state) => state.credentials);
+  const getCredentialsByAsset = useAppStore((state) => state.getCredentialsByAsset);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<AssetType | 'all' | 'capsule'>('all');
@@ -754,7 +758,34 @@ export default function Assets() {
                       <Icon className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{asset.name}</h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-semibold text-gray-900">{asset.name}</h3>
+                        {(() => {
+                          const assetCredentials = getCredentialsByAsset(asset.id);
+                          if (assetCredentials.length === 0) return null;
+                          const sensitiveCount = assetCredentials.filter(c => c.fields.some(f => f.isSensitive)).length;
+                          return (
+                            <div
+                              className="group relative"
+                              title={`已保存 ${assetCredentials.length} 项凭据${sensitiveCount > 0 ? `（含 ${sensitiveCount} 项敏感信息）` : ''}`}
+                            >
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 text-[10px] font-semibold border border-indigo-200">
+                                <KeyRound className="w-3 h-3" />
+                                {assetCredentials.length}
+                              </span>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                                <div className="font-semibold mb-1">🔐 凭据加密存储</div>
+                                <div className="text-gray-300">共 {assetCredentials.length} 项凭据</div>
+                                {sensitiveCount > 0 && (
+                                  <div className="text-amber-300">含 {sensitiveCount} 项敏感信息</div>
+                                )}
+                                <div className="text-gray-400 mt-1">前往密码保险箱查看</div>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                       <span className="text-xs text-gray-500">{ASSET_TYPE_LABELS[asset.type]}</span>
                       {asset.timeCapsule?.enabled && (() => {
                         const capsuleStatus = getTimeCapsuleStatus(asset.timeCapsule);
@@ -873,6 +904,51 @@ export default function Assets() {
                           {asset.timeCapsule.note}
                         </p>
                       )}
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const assetCredentials = getCredentialsByAsset(asset.id);
+                  if (assetCredentials.length === 0) return null;
+                  const categories = new Map<string, number>();
+                  assetCredentials.forEach(c => {
+                    categories.set(c.category, (categories.get(c.category) || 0) + 1);
+                  });
+                  const totalFields = assetCredentials.reduce((sum, c) => sum + c.fields.length, 0);
+                  const sensitiveFields = assetCredentials.reduce((sum, c) => sum + c.fields.filter(f => f.isSensitive).length, 0);
+                  return (
+                    <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-violet-50/70 border border-indigo-100">
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 shrink-0">
+                          <KeyRound className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-xs font-semibold text-indigo-900">
+                              🔐 凭据加密存储 ({assetCredentials.length} 项)
+                            </p>
+                            <span className="text-[10px] text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full font-medium">
+                              {totalFields} 个字段 · {sensitiveFields} 敏感
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mb-1.5">
+                            {Array.from(categories.entries()).slice(0, 4).map(([cat, count]) => (
+                              <span key={cat} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-white/80 text-gray-600 border border-gray-100">
+                                {CREDENTIAL_CATEGORY_LABELS[cat as keyof typeof CREDENTIAL_CATEGORY_LABELS] || cat}
+                                <span className="text-indigo-500 font-medium">{count}</span>
+                              </span>
+                            ))}
+                            {categories.size > 4 && (
+                              <span className="text-[10px] text-gray-400">+{categories.size - 4}</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                            <Lock className="w-3 h-3" />
+                            已通过主密码 AES-256 加密 · 前往【密码保险箱】查看
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}
