@@ -80,6 +80,84 @@ import {
   CHARITY_CATEGORY_LABELS,
 } from '@/constants';
 
+const SHAMIR_PRIME = (1n << 521n) - 1n;
+
+const shamirMod = (a: bigint, p: bigint): bigint => {
+  let result = a % p;
+  if (result < 0n) result += p;
+  return result;
+};
+
+const shamirModPow = (base: bigint, exp: bigint, p: bigint): bigint => {
+  let result = 1n;
+  base = shamirMod(base, p);
+  while (exp > 0n) {
+    if (exp % 2n === 1n) {
+      result = shamirMod(result * base, p);
+    }
+    exp = exp / 2n;
+    base = shamirMod(base * base, p);
+  }
+  return result;
+};
+
+const shamirModInverse = (a: bigint, p: bigint): bigint => {
+  return shamirModPow(a, p - 2n, p);
+};
+
+const randomBigInt = (max: bigint): bigint => {
+  const bits = max.toString(2).length;
+  const bytes = Math.ceil(bits / 8);
+  let result: bigint;
+  do {
+    result = 0n;
+    for (let i = 0; i < bytes; i++) {
+      result = (result << 8n) | BigInt(Math.floor(Math.random() * 256));
+    }
+  } while (result >= max);
+  return result;
+};
+
+const seededRandomBigInt = (max: bigint, seed: number): bigint => {
+  let s = seed;
+  const rand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+  const bits = max.toString(2).length;
+  const bytes = Math.ceil(bits / 8);
+  let result: bigint;
+  do {
+    result = 0n;
+    for (let i = 0; i < bytes; i++) {
+      result = (result << 8n) | BigInt(Math.floor(rand() * 256));
+    }
+  } while (result >= max);
+  return result;
+};
+
+const stringToBigIntWithLength = (str: string): { value: bigint; byteLength: number } => {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  let result = 0n;
+  for (let i = 0; i < bytes.length; i++) {
+    result = (result << 8n) | BigInt(bytes[i]);
+  }
+  return { value: result, byteLength: bytes.length };
+};
+
+const bigIntToStringWithLength = (num: bigint, byteLength: number): string => {
+  const hex = num.toString(16);
+  const expectedHexLen = byteLength * 2;
+  const paddedHex = hex.padStart(expectedHexLen, '0');
+  const bytes: number[] = [];
+  for (let i = 0; i < paddedHex.length; i += 2) {
+    bytes.push(parseInt(paddedHex.substr(i, 2), 16));
+  }
+  const decoder = new TextDecoder();
+  return decoder.decode(new Uint8Array(bytes));
+};
+
 interface AppState {
   currentUser: User | null;
   assets: DigitalAsset[];
@@ -1302,57 +1380,17 @@ const generateShamirShards = (
   totalShards: number,
   requiredShards: number
 ): string[] => {
-  const SHAMIR_PRIME = (1n << 521n) - 1n;
-
-  const mod = (a: bigint, p: bigint): bigint => {
-    let result = a % p;
-    if (result < 0n) result += p;
-    return result;
-  };
-
-  const seededRandom = (seed: number): (() => number) => {
-    let s = seed;
-    return () => {
-      s = (s * 9301 + 49297) % 233280;
-      return s / 233280;
-    };
-  };
-
-  const rand = seededRandom(masterKey.length * 1000 + totalShards * 100 + requiredShards);
-
-  const randomBigIntSeeded = (max: bigint): bigint => {
-    const bits = max.toString(2).length;
-    const bytes = Math.ceil(bits / 8);
-    let result: bigint;
-    do {
-      result = 0n;
-      for (let i = 0; i < bytes; i++) {
-        result = (result << 8n) | BigInt(Math.floor(rand() * 256));
-      }
-    } while (result >= max);
-    return result;
-  };
-
-  const stringToBigInt = (str: string): bigint => {
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(str);
-    let result = 0n;
-    for (let i = 0; i < bytes.length; i++) {
-      result = (result << 8n) | BigInt(bytes[i]);
-    }
-    return result;
-  };
-
-  const keyInt = stringToBigInt(masterKey);
+  const { value: keyInt, byteLength } = stringToBigIntWithLength(masterKey);
   const coefficients: bigint[] = [keyInt];
+  const seed = masterKey.length * 1000 + totalShards * 100 + requiredShards;
   for (let i = 1; i < requiredShards; i++) {
-    coefficients.push(randomBigIntSeeded(SHAMIR_PRIME));
+    coefficients.push(seededRandomBigInt(SHAMIR_PRIME, seed + i * 12345));
   }
 
   const evaluatePolynomial = (x: bigint): bigint => {
     let result = 0n;
     for (let i = coefficients.length - 1; i >= 0; i--) {
-      result = mod(mod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
+      result = shamirMod(shamirMod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
     }
     return result;
   };
@@ -1361,7 +1399,7 @@ const generateShamirShards = (
   for (let i = 1; i <= totalShards; i++) {
     const x = BigInt(i);
     const y = evaluatePolynomial(x);
-    shards.push(`shamir:${i}:${y.toString(16)}`);
+    shards.push(`shamir:${i}:${byteLength}:${y.toString(16)}`);
   }
   return shards;
 };
@@ -1373,7 +1411,8 @@ const generateSimpleShards = (masterKey: string, totalShards: number): string[] 
     const start = i * chunkSize;
     const end = Math.min(start + chunkSize, masterKey.length);
     const chunk = masterKey.slice(start, end).padEnd(chunkSize, '\0');
-    shards.push(`simple:${i + 1}:${btoa(unescape(encodeURIComponent(chunk)))}`);
+    const chunkBytes = new TextEncoder().encode(chunk).length;
+    shards.push(`simple:${i + 1}:${chunkBytes}:${btoa(unescape(encodeURIComponent(chunk)))}`);
   }
   return shards;
 };
@@ -4865,61 +4904,14 @@ export const useAppStore = create<AppState>()(
             const start = i * chunkSize;
             const end = Math.min(start + chunkSize, masterKey.length);
             const chunk = masterKey.slice(start, end).padEnd(chunkSize, '\0');
-            shards.push(`simple:${i + 1}:${btoa(unescape(encodeURIComponent(chunk)))}`);
+            const chunkBytes = new TextEncoder().encode(chunk).length;
+            shards.push(`simple:${i + 1}:${chunkBytes}:${btoa(unescape(encodeURIComponent(chunk)))}`);
           }
           return shards;
         }
 
         if (algorithm === 'hierarchical' || algorithm === 'shamir') {
-          const SHAMIR_PRIME = (1n << 521n) - 1n;
-
-          const mod = (a: bigint, p: bigint): bigint => {
-            let result = a % p;
-            if (result < 0n) result += p;
-            return result;
-          };
-
-          const modPow = (base: bigint, exp: bigint, p: bigint): bigint => {
-            let result = 1n;
-            base = mod(base, p);
-            while (exp > 0n) {
-              if (exp % 2n === 1n) {
-                result = mod(result * base, p);
-              }
-              exp = exp / 2n;
-              base = mod(base * base, p);
-            }
-            return result;
-          };
-
-          const modInverse = (a: bigint, p: bigint): bigint => {
-            return modPow(a, p - 2n, p);
-          };
-
-          const randomBigInt = (max: bigint): bigint => {
-            const bits = max.toString(2).length;
-            const bytes = Math.ceil(bits / 8);
-            let result: bigint;
-            do {
-              result = 0n;
-              for (let i = 0; i < bytes; i++) {
-                result = (result << 8n) | BigInt(Math.floor(Math.random() * 256));
-              }
-            } while (result >= max);
-            return result;
-          };
-
-          const stringToBigInt = (str: string): bigint => {
-            const encoder = new TextEncoder();
-            const bytes = encoder.encode(str);
-            let result = 0n;
-            for (let i = 0; i < bytes.length; i++) {
-              result = (result << 8n) | BigInt(bytes[i]);
-            }
-            return result;
-          };
-
-          const keyInt = stringToBigInt(masterKey);
+          const { value: keyInt, byteLength } = stringToBigIntWithLength(masterKey);
           if (keyInt >= SHAMIR_PRIME) {
             throw new Error('主密钥过大，无法进行Shamir分片');
           }
@@ -4932,7 +4924,7 @@ export const useAppStore = create<AppState>()(
           const evaluatePolynomial = (x: bigint): bigint => {
             let result = 0n;
             for (let i = coefficients.length - 1; i >= 0; i--) {
-              result = mod(mod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
+              result = shamirMod(shamirMod(result * x, SHAMIR_PRIME) + coefficients[i], SHAMIR_PRIME);
             }
             return result;
           };
@@ -4941,7 +4933,7 @@ export const useAppStore = create<AppState>()(
           for (let i = 1; i <= totalShards; i++) {
             const x = BigInt(i);
             const y = evaluatePolynomial(x);
-            shards.push(`shamir:${i}:${y.toString(16)}`);
+            shards.push(`shamir:${i}:${byteLength}:${y.toString(16)}`);
           }
           return shards;
         }
@@ -4959,18 +4951,19 @@ export const useAppStore = create<AppState>()(
           const parsedShards = shards
             .map((s) => {
               const parts = s.split(':');
-              if (parts.length < 3) return null;
+              if (parts.length < 4) return null;
               const idx = parseInt(parts[1]);
-              const data = parts.slice(2).join(':');
-              if (isNaN(idx)) return null;
+              const byteLen = parseInt(parts[2]);
+              const data = parts.slice(3).join(':');
+              if (isNaN(idx) || isNaN(byteLen)) return null;
               try {
                 const decoded = decodeURIComponent(escape(atob(data)));
-                return { idx, data: decoded };
+                return { idx, data: decoded, byteLen };
               } catch {
                 return null;
               }
             })
-            .filter((s): s is { idx: number; data: string } => s !== null)
+            .filter((s): s is { idx: number; data: string; byteLen: number } => s !== null)
             .sort((a, b) => a.idx - b.idx);
 
           if (parsedShards.length === 0) return null;
@@ -4979,46 +4972,16 @@ export const useAppStore = create<AppState>()(
         }
 
         if (algorithm === 'hierarchical' || algorithm === 'shamir' || shardType === 'shamir') {
-          const SHAMIR_PRIME = (1n << 521n) - 1n;
-
-          const mod = (a: bigint, p: bigint): bigint => {
-            let result = a % p;
-            if (result < 0n) result += p;
-            return result;
-          };
-
-          const modInverse = (a: bigint, p: bigint): bigint => {
-            let exp = p - 2n;
-            let base = mod(a, p);
-            let result = 1n;
-            while (exp > 0n) {
-              if (exp % 2n === 1n) {
-                result = mod(result * base, p);
-              }
-              exp = exp / 2n;
-              base = mod(base * base, p);
-            }
-            return result;
-          };
-
-          const bigIntToString = (num: bigint): string => {
-            const hex = num.toString(16);
-            const paddedHex = hex.length % 2 === 0 ? hex : '0' + hex;
-            const bytes: number[] = [];
-            for (let i = 0; i < paddedHex.length; i += 2) {
-              bytes.push(parseInt(paddedHex.substr(i, 2), 16));
-            }
-            const decoder = new TextDecoder();
-            return decoder.decode(new Uint8Array(bytes));
-          };
-
+          let byteLength = 0;
           const parsedShards = shards
             .map((s) => {
               const parts = s.split(':');
-              if (parts.length < 3) return null;
+              if (parts.length < 4) return null;
               const x = BigInt(parseInt(parts[1]));
-              const y = BigInt('0x' + parts.slice(2).join(':'));
-              if (!x || !y) return null;
+              const bl = parseInt(parts[2]);
+              const y = BigInt('0x' + parts.slice(3).join(':'));
+              if (!x || !y || isNaN(bl)) return null;
+              if (bl > 0) byteLength = bl;
               return { x, y };
             })
             .filter((s): s is { x: bigint; y: bigint } => s !== null);
@@ -5032,17 +4995,26 @@ export const useAppStore = create<AppState>()(
               let denominator = 1n;
               for (let j = 0; j < points.length; j++) {
                 if (i === j) continue;
-                numerator = mod(numerator * (at - points[j].x), SHAMIR_PRIME);
-                denominator = mod(denominator * (points[i].x - points[j].x), SHAMIR_PRIME);
+                numerator = shamirMod(numerator * (at - points[j].x), SHAMIR_PRIME);
+                denominator = shamirMod(denominator * (points[i].x - points[j].x), SHAMIR_PRIME);
               }
-              const lagrangeCoeff = mod(numerator * modInverse(denominator, SHAMIR_PRIME), SHAMIR_PRIME);
-              secret = mod(secret + mod(points[i].y * lagrangeCoeff, SHAMIR_PRIME), SHAMIR_PRIME);
+              const lagrangeCoeff = shamirMod(numerator * shamirModInverse(denominator, SHAMIR_PRIME), SHAMIR_PRIME);
+              secret = shamirMod(secret + shamirMod(points[i].y * lagrangeCoeff, SHAMIR_PRIME), SHAMIR_PRIME);
             }
             return secret;
           };
 
           const secretInt = lagrangeInterpolate(parsedShards, 0n);
-          return bigIntToString(secretInt);
+          if (byteLength > 0) {
+            return bigIntToStringWithLength(secretInt, byteLength);
+          }
+          const hex = secretInt.toString(16);
+          const paddedHex = hex.length % 2 === 0 ? hex : '0' + hex;
+          const bytes: number[] = [];
+          for (let i = 0; i < paddedHex.length; i += 2) {
+            bytes.push(parseInt(paddedHex.substr(i, 2), 16));
+          }
+          return new TextDecoder().decode(new Uint8Array(bytes));
         }
 
         return null;
