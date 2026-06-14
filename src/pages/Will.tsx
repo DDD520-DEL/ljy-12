@@ -28,6 +28,9 @@ import {
   Target,
   Timer,
   Hourglass,
+  Heart,
+  ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -53,6 +56,8 @@ import {
   TIME_CAPSULE_STATUS_COLORS,
   getTimeCapsuleStatus,
   getDaysUntilUnlock,
+  DONATION_STATUS_LABELS,
+  DONATION_STATUS_COLORS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { TriggerType, ExecutionStep, WitnessApprovalDecision, Branch, BranchCondition, ConditionField, ConditionOperator } from '@/types';
@@ -78,6 +83,14 @@ export default function Will() {
   const getCapsuleAssets = useAppStore((state) => state.getCapsuleAssets);
   const getLockedCapsuleAssets = useAppStore((state) => state.getLockedCapsuleAssets);
   const unlockTimeCapsule = useAppStore((state) => state.unlockTimeCapsule);
+  const donationPlan = useAppStore((state) => state.donationPlan);
+  const getDonationExecutionState = useAppStore((state) => state.getDonationExecutionState);
+  const getDonationTotalValue = useAppStore((state) => state.getDonationTotalValue);
+  const startDonationExecution = useAppStore((state) => state.startDonationExecution);
+  const completeDonationExecution = useAppStore((state) => state.completeDonationExecution);
+  const completeDonationStep = useAppStore((state) => state.completeDonationStep);
+  const addAuditLog = useAppStore((state) => state.addAuditLog);
+  const getDonationItemValue = useAppStore((state) => state.getDonationItemValue);
 
   const [editingStep, setEditingStep] = useState<ExecutionStep | null>(null);
   const [showStepModal, setShowStepModal] = useState(false);
@@ -776,6 +789,239 @@ export default function Will() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Heart className="w-5 h-5 text-rose-500" />
+            公益捐赠（独立执行步骤）
+          </h3>
+          <Link
+            to="/donation"
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-rose-50 text-rose-700 rounded-lg hover:bg-rose-100 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            管理捐赠
+          </Link>
+        </div>
+
+        {!donationPlan ? (
+          <div className="text-center py-10 bg-gradient-to-br from-rose-50/50 to-orange-50/50 rounded-xl border border-dashed border-rose-200">
+            <div className="w-14 h-14 mx-auto bg-white rounded-full flex items-center justify-center shadow-sm mb-3">
+              <Heart className="w-7 h-7 text-rose-400" />
+            </div>
+            <p className="text-gray-600 font-medium mb-1">尚未创建捐赠规划</p>
+            <p className="text-sm text-gray-500 mb-4">
+              创建捐赠规划后，将自动作为独立步骤集成到遗嘱执行流程中
+            </p>
+            <Link
+              to="/donation"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              创建捐赠规划
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <Heart className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-gray-900">{donationPlan.title}</h4>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${DONATION_STATUS_COLORS[donationPlan.status] || 'bg-gray-100 text-gray-700'}`}>
+                      {DONATION_STATUS_LABELS[donationPlan.status]}
+                    </span>
+                  </div>
+                  {donationPlan.description && (
+                    <p className="text-sm text-gray-500 mt-0.5">{donationPlan.description}</p>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-gray-900">
+                  ¥{getDonationTotalValue().toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {donationPlan.items.length} 项捐赠 · 第 {donationPlan.executionStepOrder} 步执行
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                <div className="text-xs text-blue-600 font-medium mb-1">执行顺序</div>
+                <div className="text-lg font-bold text-blue-900">
+                  遗嘱执行第 {donationPlan.executionStepOrder} 步
+                </div>
+              </div>
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
+                <div className="text-xs text-amber-600 font-medium mb-1">延迟执行</div>
+                <div className="text-lg font-bold text-amber-900">
+                  {donationPlan.delayDays > 0 ? `触发后 ${donationPlan.delayDays} 天` : '立即执行'}
+                </div>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100">
+                <div className="text-xs text-emerald-600 font-medium mb-1">前置要求</div>
+                <div className="text-sm font-bold text-emerald-900 flex flex-wrap gap-x-3 gap-y-1">
+                  {donationPlan.lawyerReviewRequired && <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" />律师审核</span>}
+                  {donationPlan.witnessConfirmRequired && <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" />见证人确认</span>}
+                  {!donationPlan.lawyerReviewRequired && !donationPlan.witnessConfirmRequired && <span>无特殊要求</span>}
+                </div>
+              </div>
+            </div>
+
+            {donationPlan.status !== 'draft' && (() => {
+              const execState = getDonationExecutionState();
+              return (
+                <div>
+                  <div className="flex items-center justify-between mb-2 text-sm">
+                    <span className="text-gray-600 font-medium">执行进度</span>
+                    <span className="font-semibold text-gray-900">
+                      {execState.completedItems}/{execState.totalItems} 项 · {execState.overallProgress}%
+                    </span>
+                  </div>
+                  <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-rose-400 via-pink-500 to-rose-500 rounded-full transition-all"
+                      style={{ width: `${execState.overallProgress}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {donationPlan.items.length > 0 && (
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500">
+                  捐赠清单预览
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {donationPlan.items.slice(0, 3).map((item) => {
+                    const allocations = donationPlan.allocations.filter(a => a.donationItemId === item.id);
+                    return (
+                      <div key={item.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {item.type === 'specific_asset' && <>指定资产捐赠</>}
+                            {item.type === 'value_percentage' && <>总资产 {item.percentageOfTotal}% 捐赠</>}
+                            {item.type === 'fixed_amount' && <>固定金额捐赠</>}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                            {allocations.slice(0, 3).map(a => (
+                              <span key={a.id} className="bg-gray-100 px-1.5 py-0.5 rounded">
+                                {a.percentage}%
+                              </span>
+                            ))}
+                            {allocations.length > 3 && <span>+{allocations.length - 3}机构</span>}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                          ¥{getDonationItemValue(item).toLocaleString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {donationPlan.items.length > 3 && (
+                    <Link
+                      to="/donation"
+                      className="block px-4 py-2.5 text-center text-sm text-rose-600 hover:bg-rose-50 transition font-medium"
+                    >
+                      查看全部 {donationPlan.items.length} 项捐赠 →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {donationPlan.status === 'draft' && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>当前为草稿状态，需在「公益捐赠」页面完成配置并生效后，方可在遗嘱执行流程中执行。</span>
+              </div>
+            )}
+
+            {donationPlan.status === 'active' && (will?.status === 'triggered' || will?.status === 'executing') && (
+              <button
+                onClick={() => {
+                  startDonationExecution();
+                  addAuditLog({
+                    action: 'donation_execution_started',
+                    description: `遗嘱执行流程中启动捐赠规划「${donationPlan.title}」`,
+                    resourceType: 'donation_plan',
+                    resourceId: donationPlan.id,
+                  });
+                  addNotification({
+                    type: 'warning',
+                    title: '公益捐赠步骤已启动',
+                    message: `「${donationPlan.title}」已进入执行阶段`,
+                  });
+                }}
+                className="w-full py-3 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-xl font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+              >
+                <Play className="w-5 h-5" />
+                启动公益捐赠执行步骤
+              </button>
+            )}
+
+            {donationPlan.status === 'executing' && (
+              <div className="space-y-3">
+                {donationPlan.items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => completeDonationStep(item.id)}
+                    className="w-full flex items-center justify-between gap-3 p-3 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 rounded-xl transition text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full border-2 border-blue-500 flex items-center justify-center text-blue-600">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          执行捐赠项目 #{donationPlan.items.indexOf(item) + 1}
+                        </div>
+                        <div className="text-xs text-gray-500">点击标记该项目已完成</div>
+                      </div>
+                    </div>
+                    <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    completeDonationExecution();
+                    addNotification({
+                      type: 'success',
+                      title: '公益捐赠步骤已完成',
+                      message: `「${donationPlan.title}」全部项目执行完成`,
+                    });
+                  }}
+                  className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  完成全部公益捐赠步骤
+                </button>
+              </div>
+            )}
+
+            {donationPlan.status === 'completed' && (
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="font-semibold text-emerald-800">公益捐赠步骤已圆满完成</div>
+                  <div className="text-sm text-emerald-700/80">
+                    累计 ¥{getDonationTotalValue().toLocaleString()} 已按分配规则执行
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">

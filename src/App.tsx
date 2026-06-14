@@ -10,6 +10,7 @@ import MFA from "@/pages/MFA";
 import Witnesses from "@/pages/Witnesses";
 import AuditLog from "@/pages/AuditLog";
 import Simulation from "@/pages/Simulation";
+import DonationPlanning from "@/pages/DonationPlanning";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/mfa" element={<MFA />} />
           <Route path="/witnesses" element={<Witnesses />} />
           <Route path="/audit" element={<AuditLog />} />
+          <Route path="/donation" element={<DonationPlanning />} />
         </Route>
       </Routes>
     </Router>

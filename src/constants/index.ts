@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel, CharityCategory, DonationItemType, DonationStatus, Charity } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -115,6 +115,15 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   master_password_changed: '修改主密码',
   vault_locked: '锁定保险箱',
   vault_unlocked: '解锁保险箱',
+  donation_plan_created: '创建捐赠规划',
+  donation_plan_updated: '更新捐赠规划',
+  donation_plan_deleted: '删除捐赠规划',
+  donation_item_added: '添加捐赠项目',
+  donation_item_removed: '移除捐赠项目',
+  donation_allocation_updated: '更新分配规则',
+  donation_execution_started: '开始执行捐赠',
+  donation_execution_completed: '完成执行捐赠',
+  donation_step_completed: '捐赠步骤完成',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -428,6 +437,10 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   time_capsule: '时间胶囊',
   credential: '凭据',
   vault: '密码保险箱',
+  charity: '公益机构',
+  donation_plan: '捐赠规划',
+  donation_item: '捐赠清单',
+  donation_allocation: '分配规则',
 };
 
 export const getResourceTypeLabel = (type?: string): string => {
@@ -478,3 +491,160 @@ export const CREDENTIAL_ACCESS_LEVEL_COLORS: Record<CredentialAccessLevel, strin
 export const DEFAULT_AUTO_LOCK_MINUTES = 5;
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_MINUTES = 30;
+
+export const CHARITY_CATEGORY_LABELS: Record<CharityCategory, string> = {
+  education: '教育公益',
+  medical: '医疗救助',
+  environment: '环境保护',
+  poverty: '扶贫济困',
+  elderly: '养老服务',
+  children: '儿童福利',
+  animal: '动物保护',
+  disaster: '灾难救援',
+  culture: '文化传承',
+  other: '其他公益',
+};
+
+export const CHARITY_CATEGORY_COLORS: Record<CharityCategory, string> = {
+  education: 'bg-blue-100 text-blue-700 border-blue-200',
+  medical: 'bg-rose-100 text-rose-700 border-rose-200',
+  environment: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  poverty: 'bg-amber-100 text-amber-700 border-amber-200',
+  elderly: 'bg-orange-100 text-orange-700 border-orange-200',
+  children: 'bg-pink-100 text-pink-700 border-pink-200',
+  animal: 'bg-teal-100 text-teal-700 border-teal-200',
+  disaster: 'bg-red-100 text-red-700 border-red-200',
+  culture: 'bg-violet-100 text-violet-700 border-violet-200',
+  other: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+export const DONATION_ITEM_TYPE_LABELS: Record<DonationItemType, string> = {
+  specific_asset: '指定资产',
+  value_percentage: '资产估值比例',
+  fixed_amount: '固定金额',
+};
+
+export const DONATION_ITEM_TYPE_COLORS: Record<DonationItemType, string> = {
+  specific_asset: 'bg-cyan-100 text-cyan-700',
+  value_percentage: 'bg-indigo-100 text-indigo-700',
+  fixed_amount: 'bg-emerald-100 text-emerald-700',
+};
+
+export const DONATION_STATUS_LABELS: Record<DonationStatus, string> = {
+  draft: '草稿',
+  active: '已生效',
+  executing: '执行中',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+
+export const DONATION_STATUS_COLORS: Record<DonationStatus, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  active: 'bg-green-100 text-green-700',
+  executing: 'bg-blue-100 text-blue-700',
+  completed: 'bg-purple-100 text-purple-700',
+  cancelled: 'bg-red-100 text-red-700',
+};
+
+export const PRESET_CHARITIES: Charity[] = [
+  {
+    id: 'charity-001',
+    name: '中国青少年发展基金会',
+    category: 'education',
+    description: '致力于改善贫困地区办学条件，资助家庭困难学生完成学业的全国性公募基金会。希望工程发起单位。',
+    website: 'https://www.cydf.org.cn',
+    taxId: '531000005000074012',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-002',
+    name: '中国红十字基金会',
+    category: 'medical',
+    description: '专注于救助白血病、先心病等重大疾病儿童，援建博爱卫生院和健康卫生项目的公益基金会。',
+    website: 'https://www.crcf.org.cn',
+    taxId: '531000005000076350',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-003',
+    name: '中华环境保护基金会',
+    category: 'environment',
+    description: '从事环境保护公益事业的全国性公募基金会，支持环境教育、生态保护、污染防治等项目。',
+    website: 'https://www.cepf.org.cn',
+    taxId: '531000005000062832',
+    rating: 4,
+    isPreset: true,
+  },
+  {
+    id: 'charity-004',
+    name: '中国扶贫基金会',
+    category: 'poverty',
+    description: '致力于帮助贫困地区和贫困人口改善生产生活条件的全国性专业扶贫公益机构。',
+    website: 'https://www.cfpa.org.cn',
+    taxId: '5310000050000683XY',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-005',
+    name: '全国老龄事业发展基金会',
+    category: 'elderly',
+    description: '致力于老龄事业发展，开展助老、养老服务、老年维权等公益项目的全国性公募基金会。',
+    website: 'https://www.cnaging.org',
+    taxId: '53100000500007651C',
+    rating: 4,
+    isPreset: true,
+  },
+  {
+    id: 'charity-006',
+    name: '中国儿童少年基金会',
+    category: 'children',
+    description: '新中国第一家以募集资金形式救助失学儿童、扶助贫困地区教育事业的公益基金会。',
+    website: 'https://www.cctf.org.cn',
+    taxId: '53100000500006477L',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-007',
+    name: '北京爱它动物保护公益基金会',
+    category: 'animal',
+    description: '专注于动物保护事业，救助流浪动物，推动动物福利立法的非公募公益基金会。',
+    website: 'https://www.aita.org.cn',
+    taxId: '531100005000210000',
+    rating: 4,
+    isPreset: true,
+  },
+  {
+    id: 'charity-008',
+    name: '中国乡村发展基金会',
+    category: 'poverty',
+    description: '致力于乡村振兴、灾害救援、儿童发展等领域，推动乡村可持续发展的公益机构。',
+    website: 'https://www.foundationcenter.org.cn',
+    taxId: '53100000500006330J',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-009',
+    name: '壹基金',
+    category: 'disaster',
+    description: '专注于灾害救助、儿童关怀与公益支持三大领域的国内首家民间公募基金会。',
+    website: 'https://www.onefoundation.cn',
+    taxId: '534403005026799012',
+    rating: 5,
+    isPreset: true,
+  },
+  {
+    id: 'charity-010',
+    name: '中国文化遗产保护基金会',
+    category: 'culture',
+    description: '致力于文物保护、非物质文化遗产传承、历史文化名城名镇保护的全国性基金会。',
+    website: 'https://www.cchpf.org.cn',
+    taxId: '531000005000200000',
+    rating: 4,
+    isPreset: true,
+  },
+];

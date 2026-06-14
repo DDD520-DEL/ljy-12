@@ -22,6 +22,8 @@ import {
   Lock,
   Unlock,
   Hourglass,
+  Heart,
+  CheckCircle2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -42,6 +44,8 @@ import {
   TIME_CAPSULE_STATUS_COLORS,
   getTimeCapsuleStatus,
   getDaysUntilUnlock,
+  DONATION_STATUS_LABELS,
+  DONATION_STATUS_COLORS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 
@@ -68,6 +72,9 @@ export default function Dashboard() {
   const getCapsuleAssets = useAppStore((state) => state.getCapsuleAssets);
   const getLockedCapsuleAssets = useAppStore((state) => state.getLockedCapsuleAssets);
   const getUnlockedCapsuleAssets = useAppStore((state) => state.getUnlockedCapsuleAssets);
+  const donationPlan = useAppStore((state) => state.donationPlan);
+  const getDonationExecutionState = useAppStore((state) => state.getDonationExecutionState);
+  const getDonationTotalValue = useAppStore((state) => state.getDonationTotalValue);
 
   const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
   const assignedAssets = assets.filter((a) => a.heirId).length;
@@ -198,7 +205,23 @@ export default function Dashboard() {
       subtitle: `${lockedCapsuleAssets.length} 项锁定中，${unlockedCapsuleAssets.length} 项已解锁`,
       link: '/assets',
     },
-  ];
+    (() => {
+      const execState = getDonationExecutionState();
+      const donStatus = donationPlan?.status;
+      const donTitle = donStatus ? DONATION_STATUS_LABELS[donStatus] : '未创建';
+      const donValue = getDonationTotalValue();
+      return {
+        title: '公益捐赠',
+        value: donationPlan ? (donValue > 0 ? `¥${donValue.toLocaleString()}` : `${donationPlan.items.length}项`) : '—',
+        icon: Heart,
+        color: donStatus === 'completed' ? 'from-emerald-500 to-teal-600' : donStatus === 'executing' ? 'from-blue-500 to-indigo-600' : donStatus === 'active' ? 'from-rose-500 to-pink-600' : 'from-gray-400 to-gray-500',
+        subtitle: donationPlan
+          ? `${execState.overallProgress}% 已完成 · ${donationPlan.items.length} 项 · ${donTitle}`
+          : '创建捐赠规划回报社会',
+        link: '/donation',
+      };
+    })(),
+  ].filter(Boolean);
 
   return (
     <div className="space-y-6">

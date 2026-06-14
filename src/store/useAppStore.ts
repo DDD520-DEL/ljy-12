@@ -34,6 +34,14 @@ import type {
   CredentialCategory,
   CredentialAccessLevel,
   VaultState,
+  Charity,
+  DonationPlan,
+  DonationItem,
+  DonationAllocation,
+  DonationExecutionState,
+  DonationStatus,
+  DonationItemType,
+  CharityCategory,
 } from '@/types';
 import {
   generateId,
@@ -52,6 +60,8 @@ import {
   getTimeCapsuleStatus,
   DEFAULT_AUTO_LOCK_MINUTES,
   CREDENTIAL_CATEGORY_LABELS,
+  PRESET_CHARITIES,
+  CHARITY_CATEGORY_LABELS,
 } from '@/constants';
 
 interface AppState {
@@ -172,6 +182,37 @@ interface AppState {
   lockVault: () => void;
   updateVaultAutoLock: (minutes: number) => void;
   getDecryptedCredentialsForHeir: (heirId: string, executionStep: number) => Credential[];
+
+  presetCharities: Charity[];
+  customCharities: Charity[];
+  donationPlan: DonationPlan | null;
+
+  addCustomCharity: (charity: Omit<Charity, 'id' | 'isPreset'>) => void;
+  updateCustomCharity: (id: string, updates: Partial<Charity>) => void;
+  removeCustomCharity: (id: string) => void;
+  getAllCharities: () => Charity[];
+  getCharitiesByCategory: (category: CharityCategory) => Charity[];
+
+  createDonationPlan: (plan: Partial<DonationPlan> & { title: string }) => void;
+  updateDonationPlan: (updates: Partial<DonationPlan>) => void;
+  deleteDonationPlan: () => void;
+  activateDonationPlan: () => void;
+
+  addDonationItem: (item: Omit<DonationItem, 'id'>) => void;
+  updateDonationItem: (itemId: string, updates: Partial<DonationItem>) => void;
+  removeDonationItem: (itemId: string) => void;
+
+  setDonationAllocation: (itemId: string, allocations: Array<{ charityId: string; percentage: number }>) => void;
+  updateDonationAllocation: (allocationId: string, updates: Partial<DonationAllocation>) => void;
+
+  getDonationExecutionState: () => DonationExecutionState;
+  startDonationExecution: () => void;
+  completeDonationStep: (itemId: string) => void;
+  completeDonationExecution: () => void;
+  cancelDonationExecution: () => void;
+
+  getDonationTotalValue: () => number;
+  getDonationItemValue: (item: DonationItem) => number;
 }
 
 const initialUser: User = {
@@ -487,6 +528,9 @@ const createInitialAuditLogs = (): AuditLogEntry[] => {
     'bulk_heir_assigned', 'bulk_type_updated', 'bulk_export_csv',
     'emergency_contact_added', 'emergency_contact_updated', 'emergency_contact_removed', 'emergency_contact_notified',
     'time_capsule_created', 'time_capsule_updated', 'time_capsule_unlocked',
+    'donation_plan_created', 'donation_plan_updated', 'donation_plan_deleted',
+    'donation_item_added', 'donation_item_removed', 'donation_allocation_updated',
+    'donation_execution_started', 'donation_execution_completed', 'donation_step_completed',
   ];
 
   const actionDescriptions: Record<AuditActionType, (userName: string, resourceType: string) => string> = {
@@ -535,6 +579,27 @@ const createInitialAuditLogs = (): AuditLogEntry[] => {
     time_capsule_unlocked: (name) => `${name}解锁了时间胶囊`,
     time_capsule_auto_decrypted: () => `时间胶囊已自动解密`,
     asset_transferred: (name, rt) => `${name}移交了${rt}资产`,
+
+    donation_plan_created: (name) => `${name}创建了捐赠规划`,
+    donation_plan_updated: (name) => `${name}更新了捐赠规划`,
+    donation_plan_deleted: (name) => `${name}删除了捐赠规划`,
+    donation_item_added: (name) => `${name}添加了捐赠项目`,
+    donation_item_removed: (name) => `${name}移除了捐赠项目`,
+    donation_allocation_updated: (name) => `${name}更新了捐赠分配规则`,
+    donation_execution_started: (name) => `${name}启动了捐赠执行`,
+    donation_execution_completed: (name) => `${name}完成了全部捐赠执行`,
+    donation_step_completed: (name) => `${name}完成了一个捐赠步骤`,
+
+    credential_created: (name) => `${name}创建了凭据`,
+    credential_updated: (name) => `${name}更新了凭据`,
+    credential_deleted: (name) => `${name}删除了凭据`,
+    credential_viewed: (name) => `${name}查看了凭据`,
+    credential_revealed: (name) => `${name}解密了凭据内容`,
+    credential_decrypted_for_heir: (name) => `${name}向继承人解密凭据`,
+    master_password_set: (name) => `${name}设置了主密码`,
+    master_password_changed: (name) => `${name}修改了主密码`,
+    vault_locked: (name) => `${name}锁定了密码保险箱`,
+    vault_unlocked: (name) => `${name}解锁了密码保险箱`,
   };
 
   const ipAddresses = ['192.168.1.100', '10.0.0.50', '172.16.0.25', '192.168.2.88', '10.0.1.200'];
@@ -2797,6 +2862,508 @@ export const useAppStore = create<AppState>()(
         });
 
         return result;
+      },
+
+      presetCharities: PRESET_CHARITIES,
+      customCharities: [],
+      donationPlan: null,
+
+      addCustomCharity: (charity) => {
+        const now = new Date().toISOString();
+        const newCharity: Charity = {
+          ...charity,
+          id: generateId(),
+          isPreset: false,
+        };
+        set((state) => ({ customCharities: [...state.customCharities, newCharity] }));
+        get().addAuditLog({
+          action: 'donation_plan_updated',
+          description: `添加自定义公益机构：${charity.name}`,
+          resourceType: 'charity',
+          resourceId: newCharity.id,
+        });
+      },
+
+      updateCustomCharity: (id, updates) => {
+        set((state) => ({
+          customCharities: state.customCharities.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
+        }));
+        const charity = get().customCharities.find((c) => c.id === id);
+        if (charity) {
+          get().addAuditLog({
+            action: 'donation_plan_updated',
+            description: `更新公益机构信息：${charity.name}`,
+            resourceType: 'charity',
+            resourceId: id,
+          });
+        }
+      },
+
+      removeCustomCharity: (id) => {
+        const charity = get().customCharities.find((c) => c.id === id);
+        set((state) => ({
+          customCharities: state.customCharities.filter((c) => c.id !== id),
+        }));
+        if (charity) {
+          get().addAuditLog({
+            action: 'donation_plan_updated',
+            description: `删除自定义公益机构：${charity.name}`,
+            resourceType: 'charity',
+            resourceId: id,
+          });
+        }
+      },
+
+      getAllCharities: () => {
+        const { presetCharities, customCharities } = get();
+        return [...presetCharities, ...customCharities];
+      },
+
+      getCharitiesByCategory: (category) => {
+        return get().getAllCharities().filter((c) => c.category === category);
+      },
+
+      createDonationPlan: (plan) => {
+        const now = new Date().toISOString();
+        const newPlan: DonationPlan = {
+          id: generateId(),
+          title: plan.title,
+          description: plan.description,
+          status: 'draft',
+          items: [],
+          allocations: [],
+          executionStepOrder: plan.executionStepOrder ?? 3,
+          delayDays: plan.delayDays ?? 0,
+          createdAt: now,
+          updatedAt: now,
+          lawyerReviewRequired: plan.lawyerReviewRequired ?? true,
+          witnessConfirmRequired: plan.witnessConfirmRequired ?? false,
+        };
+        set({ donationPlan: newPlan });
+        get().addAuditLog({
+          action: 'donation_plan_created',
+          description: `创建捐赠规划：${plan.title}`,
+          resourceType: 'donation_plan',
+          resourceId: newPlan.id,
+        });
+        get().addNotification({
+          type: 'success',
+          title: '捐赠规划已创建',
+          message: `「${plan.title}」已创建，请添加捐赠项目和分配规则`,
+        });
+      },
+
+      updateDonationPlan: (updates) => {
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const plan = get().donationPlan;
+        if (plan) {
+          get().addAuditLog({
+            action: 'donation_plan_updated',
+            description: `更新捐赠规划：${plan.title}`,
+            resourceType: 'donation_plan',
+            resourceId: plan.id,
+            newValue: JSON.stringify(updates),
+          });
+        }
+      },
+
+      deleteDonationPlan: () => {
+        const plan = get().donationPlan;
+        set({ donationPlan: null });
+        if (plan) {
+          get().addAuditLog({
+            action: 'donation_plan_deleted',
+            description: `删除捐赠规划：${plan.title}`,
+            resourceType: 'donation_plan',
+            resourceId: plan.id,
+            previousValue: JSON.stringify(plan),
+          });
+          get().addNotification({
+            type: 'warning',
+            title: '捐赠规划已删除',
+            message: `「${plan.title}」已被删除`,
+          });
+        }
+      },
+
+      activateDonationPlan: () => {
+        const plan = get().donationPlan;
+        if (!plan) return;
+        if (plan.items.length === 0) {
+          get().addNotification({
+            type: 'error',
+            title: '生效失败',
+            message: '请先添加至少一个捐赠项目',
+          });
+          return;
+        }
+        const unallocatedItems = plan.items.filter(
+          (item) =>
+            plan.allocations.filter((a) => a.donationItemId === item.id)
+              .reduce((sum, a) => sum + a.percentage, 0) !== 100
+        );
+        if (unallocatedItems.length > 0) {
+          get().addNotification({
+            type: 'error',
+            title: '生效失败',
+            message: `有 ${unallocatedItems.length} 个捐赠项目的分配比例不等于100%`,
+          });
+          return;
+        }
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              status: 'active',
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        get().addAuditLog({
+          action: 'donation_plan_updated',
+          description: `捐赠规划「${plan.title}」已生效`,
+          resourceType: 'donation_plan',
+          resourceId: plan.id,
+          newValue: 'active',
+        });
+        get().addNotification({
+          type: 'success',
+          title: '捐赠规划已生效',
+          message: `「${plan.title}」将在遗嘱执行流程中按顺序执行`,
+        });
+      },
+
+      addDonationItem: (item) => {
+        const newItem: DonationItem = {
+          ...item,
+          id: generateId(),
+        };
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              items: [...state.donationPlan.items, newItem],
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const plan = get().donationPlan;
+        if (plan) {
+          const itemDesc =
+            item.type === 'specific_asset'
+              ? `指定资产`
+              : item.type === 'value_percentage'
+              ? `资产估值${item.percentageOfTotal}%`
+              : `固定金额¥${item.fixedAmount?.toLocaleString()}`;
+          get().addAuditLog({
+            action: 'donation_item_added',
+            description: `在捐赠规划「${plan.title}」中添加捐赠项目：${itemDesc}${item.note ? `（${item.note}）` : ''}`,
+            resourceType: 'donation_item',
+            resourceId: newItem.id,
+            newValue: JSON.stringify(item),
+          });
+        }
+      },
+
+      updateDonationItem: (itemId, updates) => {
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              items: state.donationPlan.items.map((i) =>
+                i.id === itemId ? { ...i, ...updates } : i
+              ),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const plan = get().donationPlan;
+        const item = plan?.items.find((i) => i.id === itemId);
+        if (plan && item) {
+          get().addAuditLog({
+            action: 'donation_plan_updated',
+            description: `更新捐赠规划「${plan.title}」的捐赠项目`,
+            resourceType: 'donation_item',
+            resourceId: itemId,
+            newValue: JSON.stringify(updates),
+          });
+        }
+      },
+
+      removeDonationItem: (itemId) => {
+        const plan = get().donationPlan;
+        const item = plan?.items.find((i) => i.id === itemId);
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              items: state.donationPlan.items.filter((i) => i.id !== itemId),
+              allocations: state.donationPlan.allocations.filter(
+                (a) => a.donationItemId !== itemId
+              ),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        if (plan && item) {
+          get().addAuditLog({
+            action: 'donation_item_removed',
+            description: `从捐赠规划「${plan.title}」中移除捐赠项目`,
+            resourceType: 'donation_item',
+            resourceId: itemId,
+            previousValue: JSON.stringify(item),
+          });
+        }
+      },
+
+      setDonationAllocation: (itemId, allocations) => {
+        const newAllocations: DonationAllocation[] = allocations.map((a) => ({
+          id: generateId(),
+          donationItemId: itemId,
+          charityId: a.charityId,
+          percentage: a.percentage,
+        }));
+        set((state) => {
+          if (!state.donationPlan) return {};
+          const otherAllocations = state.donationPlan.allocations.filter(
+            (a) => a.donationItemId !== itemId
+          );
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              allocations: [...otherAllocations, ...newAllocations],
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        const plan = get().donationPlan;
+        if (plan) {
+          const allCharities = get().getAllCharities();
+          const desc = allocations
+            .map((a) => {
+              const charity = allCharities.find((c) => c.id === a.charityId);
+              return `${charity?.name || a.charityId}: ${a.percentage}%`;
+            })
+            .join('，');
+          get().addAuditLog({
+            action: 'donation_allocation_updated',
+            description: `更新捐赠项目分配规则：${desc}`,
+            resourceType: 'donation_allocation',
+            resourceId: itemId,
+            newValue: JSON.stringify(allocations),
+          });
+        }
+      },
+
+      updateDonationAllocation: (allocationId, updates) => {
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              allocations: state.donationPlan.allocations.map((a) =>
+                a.id === allocationId ? { ...a, ...updates } : a
+              ),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+      },
+
+      getDonationItemValue: (item) => {
+        const { assets } = get();
+        const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
+        switch (item.type) {
+          case 'specific_asset': {
+            const asset = assets.find((a) => a.id === item.assetId);
+            return asset?.value || 0;
+          }
+          case 'value_percentage':
+            return Math.round(totalAssetValue * (item.percentageOfTotal || 0) / 100);
+          case 'fixed_amount':
+            return item.fixedAmount || 0;
+          default:
+            return 0;
+        }
+      },
+
+      getDonationTotalValue: () => {
+        const { donationPlan, getDonationItemValue } = get();
+        if (!donationPlan) return 0;
+        return donationPlan.items.reduce((sum, item) => sum + getDonationItemValue(item), 0);
+      },
+
+      getDonationExecutionState: () => {
+        const { donationPlan, getDonationItemValue, getAllCharities } = get();
+        const totalDonationValue = get().getDonationTotalValue();
+        const totalItems = donationPlan?.items.length || 0;
+
+        const charityMap = new Map<string, {
+          allocatedValue: number;
+          percentage: number;
+          completed: boolean;
+        }>();
+
+        donationPlan?.items.forEach((item) => {
+          const itemValue = getDonationItemValue(item);
+          const itemAllocations = (donationPlan?.allocations || []).filter(
+            (a) => a.donationItemId === item.id
+          );
+          itemAllocations.forEach((alloc) => {
+            const allocValue = Math.round(itemValue * alloc.percentage / 100);
+            const existing = charityMap.get(alloc.charityId) || {
+              allocatedValue: 0,
+              percentage: 0,
+              completed: donationPlan?.status === 'completed',
+            };
+            existing.allocatedValue += allocValue;
+            charityMap.set(alloc.charityId, existing);
+          });
+        });
+
+        const allocatedValue = Array.from(charityMap.values()).reduce(
+          (sum, c) => sum + c.allocatedValue,
+          0
+        );
+
+        if (totalDonationValue > 0) {
+          charityMap.forEach((entry) => {
+            entry.percentage = Math.round((entry.allocatedValue / totalDonationValue) * 100);
+          });
+        }
+
+        const completedItems = donationPlan?.status === 'completed' ? totalItems : 0;
+        const overallProgress =
+          totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+        const charityBreakdown = Array.from(charityMap.entries()).map(([charityId, entry]) => {
+          const charity = getAllCharities().find((c) => c.id === charityId);
+          return {
+            charityId,
+            charityName: charity?.name || charityId,
+            category: (charity?.category || 'other') as CharityCategory,
+            allocatedValue: entry.allocatedValue,
+            percentage: entry.percentage,
+            completed: entry.completed,
+          };
+        });
+
+        return {
+          totalDonationValue,
+          allocatedValue,
+          unallocatedValue: totalDonationValue - allocatedValue,
+          completedItems,
+          totalItems,
+          overallProgress,
+          charityBreakdown,
+        };
+      },
+
+      startDonationExecution: () => {
+        const plan = get().donationPlan;
+        if (!plan) return;
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              status: 'executing',
+              executedAt: now,
+              updatedAt: now,
+            },
+          };
+        });
+        get().addAuditLog({
+          action: 'donation_execution_started',
+          description: `开始执行捐赠规划「${plan.title}」，共 ${plan.items.length} 个捐赠项目，预计捐赠总额 ¥${get().getDonationTotalValue().toLocaleString()}`,
+          resourceType: 'donation_plan',
+          resourceId: plan.id,
+        });
+        get().addNotification({
+          type: 'warning',
+          title: '捐赠执行已启动',
+          message: `「${plan.title}」进入执行阶段，请按分配规则完成各项捐赠`,
+        });
+      },
+
+      completeDonationStep: (itemId) => {
+        const plan = get().donationPlan;
+        const item = plan?.items.find((i) => i.id === itemId);
+        if (!plan || !item) return;
+        get().addAuditLog({
+          action: 'donation_step_completed',
+          description: `完成捐赠项目执行，价值 ¥${get().getDonationItemValue(item).toLocaleString()}`,
+          resourceType: 'donation_item',
+          resourceId: itemId,
+        });
+      },
+
+      completeDonationExecution: () => {
+        const plan = get().donationPlan;
+        if (!plan) return;
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              status: 'completed',
+              completedAt: now,
+              updatedAt: now,
+            },
+          };
+        });
+        const totalValue = get().getDonationTotalValue();
+        get().addAuditLog({
+          action: 'donation_execution_completed',
+          description: `捐赠规划「${plan.title}」全部执行完成，累计捐赠 ¥${totalValue.toLocaleString()}，涉及 ${plan.items.length} 个项目`,
+          resourceType: 'donation_plan',
+          resourceId: plan.id,
+          newValue: JSON.stringify({ completedAt: now, totalValue }),
+        });
+        get().addNotification({
+          type: 'success',
+          title: '捐赠执行完成',
+          message: `「${plan.title}」所有捐赠项目已执行完成，共计 ¥${totalValue.toLocaleString()}`,
+        });
+      },
+
+      cancelDonationExecution: () => {
+        const plan = get().donationPlan;
+        if (!plan) return;
+        set((state) => {
+          if (!state.donationPlan) return {};
+          return {
+            donationPlan: {
+              ...state.donationPlan,
+              status: 'cancelled',
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+        get().addAuditLog({
+          action: 'donation_plan_updated',
+          description: `取消捐赠规划「${plan.title}」的执行`,
+          resourceType: 'donation_plan',
+          resourceId: plan.id,
+          newValue: 'cancelled',
+        });
       },
     }),
     {

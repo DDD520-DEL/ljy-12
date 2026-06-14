@@ -106,7 +106,16 @@ export type AuditActionType =
   | 'master_password_set'
   | 'master_password_changed'
   | 'vault_locked'
-  | 'vault_unlocked';
+  | 'vault_unlocked'
+  | 'donation_plan_created'
+  | 'donation_plan_updated'
+  | 'donation_plan_deleted'
+  | 'donation_item_added'
+  | 'donation_item_removed'
+  | 'donation_allocation_updated'
+  | 'donation_execution_started'
+  | 'donation_execution_completed'
+  | 'donation_step_completed';
 
 export type TimeCapsuleStatus = 'locked' | 'unlocked' | 'expired';
 
@@ -410,4 +419,84 @@ export interface VaultState {
   failedAttempts: number;
   lockUntil?: string;
   autoLockMinutes: number;
+}
+
+export type CharityCategory =
+  | 'education'
+  | 'medical'
+  | 'environment'
+  | 'poverty'
+  | 'elderly'
+  | 'children'
+  | 'animal'
+  | 'disaster'
+  | 'culture'
+  | 'other';
+
+export type DonationItemType = 'specific_asset' | 'value_percentage' | 'fixed_amount';
+
+export type DonationStatus = 'draft' | 'active' | 'executing' | 'completed' | 'cancelled';
+
+export interface Charity {
+  id: string;
+  name: string;
+  category: CharityCategory;
+  description: string;
+  logo?: string;
+  website?: string;
+  taxId?: string;
+  address?: string;
+  contactEmail?: string;
+  rating?: number;
+  isPreset: boolean;
+}
+
+export interface DonationItem {
+  id: string;
+  type: DonationItemType;
+  assetId?: string;
+  fixedAmount?: number;
+  percentageOfTotal?: number;
+  note?: string;
+}
+
+export interface DonationAllocation {
+  id: string;
+  charityId: string;
+  donationItemId: string;
+  percentage: number;
+}
+
+export interface DonationPlan {
+  id: string;
+  title: string;
+  description?: string;
+  status: DonationStatus;
+  items: DonationItem[];
+  allocations: DonationAllocation[];
+  executionStepOrder: number;
+  delayDays: number;
+  createdAt: string;
+  updatedAt: string;
+  executedAt?: string;
+  completedAt?: string;
+  lawyerReviewRequired: boolean;
+  witnessConfirmRequired: boolean;
+}
+
+export interface DonationExecutionState {
+  totalDonationValue: number;
+  allocatedValue: number;
+  unallocatedValue: number;
+  completedItems: number;
+  totalItems: number;
+  overallProgress: number;
+  charityBreakdown: {
+    charityId: string;
+    charityName: string;
+    category: CharityCategory;
+    allocatedValue: number;
+    percentage: number;
+    completed: boolean;
+  }[];
 }
