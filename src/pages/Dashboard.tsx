@@ -14,7 +14,12 @@ import {
   Calendar,
   User,
   ArrowRight,
+  Bell,
+  Settings,
+  Play,
+  CalendarClock,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import {
   ASSET_TYPE_LABELS,
@@ -27,8 +32,9 @@ import {
   HEALTH_CHECK_STATUS_LABELS,
   HEALTH_CHECK_STATUS_COLORS,
   HEALTH_CHECK_PERIOD_LABELS,
+  EMERGENCY_CONTACT_STATUS_LABELS,
+  EMERGENCY_CONTACT_STATUS_COLORS,
 } from '@/constants';
-import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 export default function Dashboard() {
@@ -38,10 +44,19 @@ export default function Dashboard() {
   const witnesses = useAppStore((state) => state.witnesses);
   const currentUser = useAppStore((state) => state.currentUser);
   const auditLogs = useAppStore((state) => state.auditLogs);
+  const emergencyContact = useAppStore((state) => state.emergencyContact);
+  const emergencySettings = useAppStore((state) => state.emergencySettings);
   const getOverdueAssets = useAppStore((state) => state.getOverdueAssets);
   const getWarningAssets = useAppStore((state) => state.getWarningAssets);
   const verifyAsset = useAppStore((state) => state.verifyAsset);
   const generateHealthCheckReminders = useAppStore((state) => state.generateHealthCheckReminders);
+  const getEmergencyContactStatus = useAppStore((state) => state.getEmergencyContactStatus);
+  const notifyEmergencyContact = useAppStore((state) => state.notifyEmergencyContact);
+  const emergencyContactConfirmAlive = useAppStore((state) => state.emergencyContactConfirmAlive);
+  const emergencyContactConfirmDeceased = useAppStore((state) => state.emergencyContactConfirmDeceased);
+  const emergencyContactTriggerWill = useAppStore((state) => state.emergencyContactTriggerWill);
+  const emergencyContactExtendPeriod = useAppStore((state) => state.emergencyContactExtendPeriod);
+  const checkEmergencyThreshold = useAppStore((state) => state.checkEmergencyThreshold);
 
   const totalAssetValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
   const assignedAssets = assets.filter((a) => a.heirId).length;
@@ -72,6 +87,58 @@ export default function Dashboard() {
     if (confirm('是否生成所有待验证资产的健康检查提醒？')) {
       generateHealthCheckReminders();
     }
+  };
+
+  const emergencyStatus = getEmergencyContactStatus();
+
+  const handleEmergencyNotify = () => {
+    if (confirm('确认立即通知紧急联系人吗？')) {
+      notifyEmergencyContact();
+    }
+  };
+
+  const handleEmergencyConfirmAlive = () => {
+    const note = prompt('请输入备注信息（可选）：');
+    if (note !== null) {
+      emergencyContactConfirmAlive(note || undefined);
+    }
+  };
+
+  const handleEmergencyConfirmDeceased = () => {
+    if (confirm('⚠️ 确认用户已身故？此操作将触发后续流程。')) {
+      const note = prompt('请输入备注信息（可选）：');
+      if (note !== null) {
+        emergencyContactConfirmDeceased(note || undefined);
+      }
+    }
+  };
+
+  const handleEmergencyTriggerWill = () => {
+    if (confirm('⚠️ 确定要触发遗嘱执行吗？此操作不可撤销！')) {
+      const note = prompt('请输入备注信息（可选）：');
+      if (note !== null) {
+        emergencyContactTriggerWill(note || undefined);
+      }
+    }
+  };
+
+  const handleEmergencyExtendPeriod = () => {
+    const daysStr = prompt('请输入延长的天数（1-365）：', '30');
+    if (daysStr) {
+      const days = parseInt(daysStr, 10);
+      if (days >= 1 && days <= 365) {
+        const note = prompt('请输入备注信息（可选）：');
+        if (note !== null) {
+          emergencyContactExtendPeriod(days, note || undefined);
+        }
+      } else {
+        alert('请输入1-365之间的天数');
+      }
+    }
+  };
+
+  const handleCheckThreshold = () => {
+    checkEmergencyThreshold();
   };
 
   const statCards = [
@@ -197,6 +264,153 @@ export default function Dashboard() {
                 )}
               </p>
             </div>
+
+            {emergencySettings.enabled && emergencyContact && (
+              <div className={cn(
+                'rounded-xl p-4 mb-6 border',
+                emergencyStatus.isOverThreshold
+                  ? 'bg-rose-50 border-rose-200'
+                  : emergencyContact.status === 'notified'
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-blue-50 border-blue-200'
+              )}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Bell className={cn(
+                      'w-5 h-5',
+                      emergencyStatus.isOverThreshold ? 'text-rose-500' : 'text-blue-500'
+                    )} />
+                    <h3 className="font-semibold text-gray-900">紧急联系人状态</h3>
+                    <span className={cn(
+                      'px-2 py-0.5 rounded-full text-xs font-medium',
+                      EMERGENCY_CONTACT_STATUS_COLORS[emergencyContact.status]
+                    )}>
+                      {EMERGENCY_CONTACT_STATUS_LABELS[emergencyContact.status]}
+                    </span>
+                  </div>
+                  <Link
+                    to="/mfa"
+                    className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    设置
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  <div className="bg-white/80 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500">紧急联系人</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{emergencyContact.name}</p>
+                    <p className="text-xs text-gray-400">{emergencyContact.relationship}</p>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500">通知阈值</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{emergencyStatus.thresholdDays} 天</p>
+                    <p className="text-xs text-gray-400">
+                      {emergencyStatus.isOverThreshold ? '已超过' : `还剩 ${emergencyStatus.thresholdDays - emergencyStatus.daysInactive} 天`}
+                    </p>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500">确认窗口期</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{emergencyStatus.confirmationWindowDays} 天</p>
+                    <p className="text-xs text-gray-400">
+                      {emergencyContact.notifiedAt
+                        ? emergencyStatus.isInConfirmationWindow
+                          ? `剩余 ${emergencyStatus.confirmationWindowDays - (emergencyStatus.daysSinceNotification || 0)} 天`
+                          : '已逾期'
+                        : '未触发'}
+                    </p>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500">联系邮箱</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">{emergencyContact.email}</p>
+                    {emergencyContact.phone && (
+                      <p className="text-xs text-gray-400">{emergencyContact.phone}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {emergencyContact.status === 'pending' && (
+                    <button
+                      onClick={handleEmergencyNotify}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors"
+                    >
+                      <Bell className="w-4 h-4" />
+                      立即通知
+                    </button>
+                  )}
+                  {emergencyContact.status === 'notified' && (
+                    <>
+                      <button
+                        onClick={handleEmergencyConfirmAlive}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        确认健在
+                      </button>
+                      <button
+                        onClick={handleEmergencyConfirmDeceased}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                        确认身故
+                      </button>
+                      <button
+                        onClick={handleEmergencyExtendPeriod}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                      >
+                        <CalendarClock className="w-4 h-4" />
+                        延长观察期
+                      </button>
+                    </>
+                  )}
+                  {emergencyContact.status === 'confirmed_deceased' && (
+                    <button
+                      onClick={handleEmergencyTriggerWill}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <Play className="w-4 h-4" />
+                      触发遗嘱执行
+                    </button>
+                  )}
+                  {emergencyContact.status !== 'notified' && (
+                    <button
+                      onClick={handleCheckThreshold}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-500 text-white text-sm rounded-lg hover:bg-gray-600 transition-colors"
+                    >
+                      <Clock className="w-4 h-4" />
+                      检查阈值
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!emergencySettings.enabled && (
+              <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
+                      <Bell className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">紧急联系人机制未启用</p>
+                      <p className="text-xs text-gray-500">
+                        设置紧急联系人后，系统将在您长期未登录时先通知其确认状态，为您的数字遗产提供双重保障
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to="/mfa"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-500 text-white text-sm rounded-lg hover:bg-rose-600 transition-colors"
+                  >
+                    <Settings className="w-4 h-4" />
+                    去设置
+                  </Link>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(assetTypeStats).map(([type, count]) => (

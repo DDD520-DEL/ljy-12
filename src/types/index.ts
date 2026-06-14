@@ -18,6 +18,31 @@ export type HealthCheckPeriod = '7_days' | '30_days' | '90_days' | '180_days' | 
 
 export type HealthCheckStatus = 'normal' | 'warning' | 'overdue' | 'never';
 
+export type EmergencyContactStatus = 'pending' | 'notified' | 'confirmed_alive' | 'confirmed_deceased' | 'triggered_will' | 'extended_period';
+
+export interface EmergencyContact {
+  id: string;
+  name: string;
+  relationship: string;
+  email: string;
+  phone?: string;
+  notificationPreference: 'email' | 'sms' | 'both';
+  isVerified: boolean;
+  createdAt: string;
+  status: EmergencyContactStatus;
+  notifiedAt?: string;
+  confirmedAt?: string;
+  extendedDays?: number;
+  note?: string;
+}
+
+export interface EmergencyContactSettings {
+  enabled: boolean;
+  thresholdDays: number;
+  confirmationWindowDays: number;
+  contactId?: string;
+}
+
 export type ReminderRule = {
   enabled: boolean;
   daysBefore: number;
@@ -57,7 +82,17 @@ export type AuditActionType =
   | 'branch_path_triggered'
   | 'bulk_heir_assigned'
   | 'bulk_type_updated'
-  | 'bulk_export_csv';
+  | 'bulk_export_csv'
+  | 'emergency_contact_added'
+  | 'emergency_contact_updated'
+  | 'emergency_contact_removed'
+  | 'emergency_contact_verified'
+  | 'emergency_contact_notified'
+  | 'emergency_contact_confirmed_alive'
+  | 'emergency_contact_confirmed_deceased'
+  | 'emergency_contact_triggered_will'
+  | 'emergency_contact_extended_period'
+  | 'emergency_settings_updated';
 
 export interface DigitalAsset {
   id: string;

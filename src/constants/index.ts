@@ -91,6 +91,16 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   bulk_heir_assigned: '批量分配继承人',
   bulk_type_updated: '批量修改分类',
   bulk_export_csv: '批量导出资产清单',
+  emergency_contact_added: '添加紧急联系人',
+  emergency_contact_updated: '更新紧急联系人',
+  emergency_contact_removed: '移除紧急联系人',
+  emergency_contact_verified: '紧急联系人已验证',
+  emergency_contact_notified: '通知紧急联系人',
+  emergency_contact_confirmed_alive: '紧急联系人确认健在',
+  emergency_contact_confirmed_deceased: '紧急联系人确认身故',
+  emergency_contact_triggered_will: '紧急联系人触发遗嘱',
+  emergency_contact_extended_period: '紧急联系人延长观察期',
+  emergency_settings_updated: '紧急联系人设置更新',
 };
 
 export const APPROVAL_GROUP_STATUS_LABELS: Record<ApprovalGroupStatus, string> = {
@@ -157,6 +167,28 @@ export const DEFAULT_REMINDER_DAYS = 7;
 export const DEFAULT_INACTIVITY_DAYS = 180;
 
 export const DEFAULT_WITNESS_COUNT = 2;
+
+export const DEFAULT_EMERGENCY_THRESHOLD_DAYS = 90;
+
+export const DEFAULT_EMERGENCY_CONFIRMATION_WINDOW = 7;
+
+export const EMERGENCY_CONTACT_STATUS_LABELS: Record<string, string> = {
+  pending: '待配置',
+  notified: '已通知',
+  confirmed_alive: '确认健在',
+  confirmed_deceased: '确认身故',
+  triggered_will: '已触发遗嘱',
+  extended_period: '已延长观察期',
+};
+
+export const EMERGENCY_CONTACT_STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-gray-100 text-gray-700',
+  notified: 'bg-amber-100 text-amber-700',
+  confirmed_alive: 'bg-green-100 text-green-700',
+  confirmed_deceased: 'bg-red-100 text-red-700',
+  triggered_will: 'bg-purple-100 text-purple-700',
+  extended_period: 'bg-blue-100 text-blue-700',
+};
 
 export const generateId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

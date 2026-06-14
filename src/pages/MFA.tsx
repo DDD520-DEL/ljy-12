@@ -14,9 +14,23 @@ import {
   MessageCircle,
   Send,
   Loader2,
+  User,
+  Phone,
+  Clock,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  Bell,
+  CalendarClock,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
+import {
+  EMERGENCY_CONTACT_STATUS_LABELS,
+  EMERGENCY_CONTACT_STATUS_COLORS,
+  RELATIONSHIP_LABELS,
+} from '@/constants';
 
 const base32ToHex = (base32: string): string => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -89,6 +103,25 @@ export default function MFA() {
   const updateUser = useAppStore((state) => state.updateUser);
   const addAuditLog = useAppStore((state) => state.addAuditLog);
   const addNotification = useAppStore((state) => state.addNotification);
+  const emergencyContact = useAppStore((state) => state.emergencyContact);
+  const emergencySettings = useAppStore((state) => state.emergencySettings);
+  const heirs = useAppStore((state) => state.heirs);
+  const setEmergencyContact = useAppStore((state) => state.setEmergencyContact);
+  const updateEmergencyContact = useAppStore((state) => state.updateEmergencyContact);
+  const removeEmergencyContact = useAppStore((state) => state.removeEmergencyContact);
+  const verifyEmergencyContact = useAppStore((state) => state.verifyEmergencyContact);
+  const updateEmergencySettings = useAppStore((state) => state.updateEmergencySettings);
+  const getEmergencyContactStatus = useAppStore((state) => state.getEmergencyContactStatus);
+
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyForm, setEmergencyForm] = useState({
+    name: '',
+    relationship: '',
+    email: '',
+    phone: '',
+    notificationPreference: 'email' as 'email' | 'sms' | 'both',
+  });
+  const [editingEmergency, setEditingEmergency] = useState(false);
 
   const [showSecret, setShowSecret] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -271,6 +304,97 @@ export default function MFA() {
     setVerifyError('');
   };
 
+  const handleOpenEmergencyModal = (edit?: boolean) => {
+    if (edit && emergencyContact) {
+      setEmergencyForm({
+        name: emergencyContact.name,
+        relationship: emergencyContact.relationship,
+        email: emergencyContact.email,
+        phone: emergencyContact.phone || '',
+        notificationPreference: emergencyContact.notificationPreference,
+      });
+      setEditingEmergency(true);
+    } else {
+      setEmergencyForm({
+        name: '',
+        relationship: '',
+        email: '',
+        phone: '',
+        notificationPreference: 'email',
+      });
+      setEditingEmergency(false);
+    }
+    setShowEmergencyModal(true);
+  };
+
+  const handleCloseEmergencyModal = () => {
+    setShowEmergencyModal(false);
+    setEditingEmergency(false);
+  };
+
+  const handleSaveEmergencyContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emergencyForm.name || !emergencyForm.email) return;
+
+    if (editingEmergency && emergencyContact) {
+      updateEmergencyContact({
+        name: emergencyForm.name,
+        relationship: emergencyForm.relationship,
+        email: emergencyForm.email,
+        phone: emergencyForm.phone || undefined,
+        notificationPreference: emergencyForm.notificationPreference,
+      });
+    } else {
+      setEmergencyContact({
+        name: emergencyForm.name,
+        relationship: emergencyForm.relationship,
+        email: emergencyForm.email,
+        phone: emergencyForm.phone || undefined,
+        notificationPreference: emergencyForm.notificationPreference,
+      });
+    }
+    handleCloseEmergencyModal();
+  };
+
+  const handleRemoveEmergencyContact = () => {
+    if (confirm('确定要移除紧急联系人吗？这将禁用紧急联系人接管机制。')) {
+      removeEmergencyContact();
+      updateEmergencySettings({ enabled: false });
+    }
+  };
+
+  const handleVerifyEmergencyContact = () => {
+    if (confirm('确认紧急联系人已完成身份验证吗？')) {
+      verifyEmergencyContact();
+    }
+  };
+
+  const handleToggleEmergencyEnabled = (enabled: boolean) => {
+    if (enabled && !emergencyContact) {
+      addNotification({
+        type: 'warning',
+        title: '请先添加紧急联系人',
+        message: '请先添加并验证紧急联系人后再启用此功能',
+      });
+      return;
+    }
+    if (enabled && emergencyContact && !emergencyContact.isVerified) {
+      addNotification({
+        type: 'warning',
+        title: '请先验证紧急联系人',
+        message: '请先完成紧急联系人身份验证后再启用此功能',
+      });
+      return;
+    }
+    updateEmergencySettings({ enabled });
+  };
+
+  const emergencyStatus = getEmergencyContactStatus();
+
+  const availableRelationships = [
+    '配偶', '子女', '父母', '兄弟姐妹', '朋友', '律师', '医生', '其他'
+  ].filter(r => !heirs.some(h => h.name === emergencyForm.name && RELATIONSHIP_LABELS[h.relationship] === r));
+
   return (
     <div className="space-y-6">
       <div>
@@ -342,7 +466,6 @@ export default function MFA() {
           {mfaMethods.map((method) => {
             const Icon = method.icon;
             const isActive = currentUser?.mfaEnabled && currentUser.mfaMethod === method.id;
-            const isEnabled = currentUser?.mfaEnabled;
 
             return (
               <div
@@ -440,6 +563,219 @@ export default function MFA() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-rose-500" />
+            紧急联系人接管机制
+          </h3>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <span className="text-sm text-gray-600">启用机制</span>
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={emergencySettings.enabled}
+                onChange={(e) => handleToggleEmergencyEnabled(e.target.checked)}
+                className="sr-only"
+              />
+              <div className={cn(
+                'w-12 h-6 rounded-full transition-colors',
+                emergencySettings.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+              )} />
+              <div className={cn(
+                'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                emergencySettings.enabled ? 'translate-x-6' : 'translate-x-0'
+              )} />
+            </div>
+          </label>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-6">
+          设置紧急联系人后，当您超过阈值天数未登录时，系统将先通知紧急联系人确认您的状态。
+          紧急联系人可代为确认您的状态、触发遗嘱执行或延长观察期，为您的数字遗产提供双重保障。
+        </p>
+
+        {!emergencyContact ? (
+          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+            <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 mb-2">尚未设置紧急联系人</p>
+            <p className="text-xs text-gray-400 mb-4">紧急联系人不能是继承人名单中的人员</p>
+            <button
+              onClick={() => handleOpenEmergencyModal()}
+              className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors mx-auto"
+            >
+              <Plus className="w-4 h-4" />
+              添加紧急联系人
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
+                    <User className="w-6 h-6 text-rose-600" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-gray-900">{emergencyContact.name}</h4>
+                      <span className={cn(
+                        'px-2 py-0.5 rounded-full text-xs font-medium',
+                        EMERGENCY_CONTACT_STATUS_COLORS[emergencyContact.status]
+                      )}>
+                        {EMERGENCY_CONTACT_STATUS_LABELS[emergencyContact.status]}
+                      </span>
+                      {emergencyContact.isVerified && (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          已验证
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-0.5">{emergencyContact.relationship}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleOpenEmergencyModal(true)}
+                    className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                    title="编辑"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleRemoveEmergencyContact}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="删除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-600">{emergencyContact.email}</span>
+                </div>
+                {emergencyContact.phone && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">{emergencyContact.phone}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <Bell className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-600">
+                    通知方式：{emergencyContact.notificationPreference === 'email' ? '邮件' :
+                      emergencyContact.notificationPreference === 'sms' ? '短信' : '邮件+短信'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-600">
+                    创建时间：{new Date(emergencyContact.createdAt).toLocaleDateString('zh-CN')}
+                  </span>
+                </div>
+              </div>
+
+              {!emergencyContact.isVerified && (
+                <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="text-sm text-amber-700">紧急联系人尚未完成身份验证</span>
+                    </div>
+                    <button
+                      onClick={handleVerifyEmergencyContact}
+                      className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors"
+                    >
+                      标记为已验证
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-rose-500" />
+                  通知阈值天数
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="30"
+                    max="180"
+                    step="15"
+                    value={emergencySettings.thresholdDays}
+                    onChange={(e) => updateEmergencySettings({ thresholdDays: Number(e.target.value) })}
+                    className="flex-1"
+                  />
+                  <span className="text-lg font-semibold text-rose-600 w-16 text-right">
+                    {emergencySettings.thresholdDays} 天
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  当您连续 {emergencySettings.thresholdDays} 天未登录时，系统将通知紧急联系人
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-rose-500" />
+                  确认窗口期
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="1"
+                    max="30"
+                    step="1"
+                    value={emergencySettings.confirmationWindowDays}
+                    onChange={(e) => updateEmergencySettings({ confirmationWindowDays: Number(e.target.value) })}
+                    className="flex-1"
+                  />
+                  <span className="text-lg font-semibold text-rose-600 w-16 text-right">
+                    {emergencySettings.confirmationWindowDays} 天
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  紧急联系人需在 {emergencySettings.confirmationWindowDays} 天内确认状态，逾期将触发遗嘱
+                </p>
+              </div>
+            </div>
+
+            {emergencySettings.enabled && emergencyContact.isVerified && (
+              <div className="p-4 bg-rose-50 rounded-xl border border-rose-200">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-rose-800">当前状态监控</p>
+                    <p className="text-sm text-rose-700 mt-1">
+                      您已连续 <strong>{emergencyStatus.daysInactive}</strong> 天未登录，
+                      阈值为 <strong>{emergencyStatus.thresholdDays}</strong> 天。
+                      {emergencyStatus.isOverThreshold ? (
+                        <span className="text-red-600 font-semibold"> 已超过阈值！</span>
+                      ) : (
+                        <span> 距离通知还有 <strong>{emergencyStatus.thresholdDays - emergencyStatus.daysInactive}</strong> 天。</span>
+                      )}
+                    </p>
+                    {emergencyContact.status === 'notified' && (
+                      <p className="text-sm text-amber-700 mt-2">
+                        <Bell className="w-4 h-4 inline mr-1" />
+                        已通知紧急联系人，等待确认中...
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-6 text-white">
@@ -662,6 +998,135 @@ export default function MFA() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showEmergencyModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {editingEmergency ? '编辑紧急联系人' : '添加紧急联系人'}
+              </h2>
+              <button
+                onClick={handleCloseEmergencyModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEmergencyContact} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">姓名 *</label>
+                <input
+                  type="text"
+                  required
+                  value={emergencyForm.name}
+                  onChange={(e) => setEmergencyForm({ ...emergencyForm, name: e.target.value })}
+                  placeholder="请输入紧急联系人姓名"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">关系 *</label>
+                <select
+                  required
+                  value={emergencyForm.relationship}
+                  onChange={(e) => setEmergencyForm({ ...emergencyForm, relationship: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                >
+                  <option value="">请选择关系</option>
+                  {availableRelationships.map((rel) => (
+                    <option key={rel} value={rel}>{rel}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  紧急联系人不能是继承人名单中的人员
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱 *</label>
+                <input
+                  type="email"
+                  required
+                  value={emergencyForm.email}
+                  onChange={(e) => setEmergencyForm({ ...emergencyForm, email: e.target.value })}
+                  placeholder="请输入邮箱地址"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                <input
+                  type="tel"
+                  value={emergencyForm.phone}
+                  onChange={(e) => setEmergencyForm({ ...emergencyForm, phone: e.target.value.replace(/\D/g, '') })}
+                  placeholder="请输入11位手机号"
+                  maxLength={11}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">通知方式</label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'email', label: '邮件', icon: Mail },
+                    { id: 'sms', label: '短信', icon: MessageCircle },
+                    { id: 'both', label: '邮件+短信', icon: Bell },
+                  ].map((method) => {
+                    const Icon = method.icon;
+                    return (
+                      <label
+                        key={method.id}
+                        className={cn(
+                          'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all',
+                          emergencyForm.notificationPreference === method.id
+                            ? 'border-rose-500 bg-rose-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="notificationPreference"
+                          value={method.id}
+                          checked={emergencyForm.notificationPreference === method.id}
+                          onChange={(e) => setEmergencyForm({
+                            ...emergencyForm,
+                            notificationPreference: e.target.value as 'email' | 'sms' | 'both'
+                          })}
+                          className="w-4 h-4 text-rose-500 focus:ring-rose-500"
+                        />
+                        <Icon className="w-5 h-5 text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">{method.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseEmergencyModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={!emergencyForm.name || !emergencyForm.email}
+                  className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editingEmergency ? '保存修改' : '添加联系人'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

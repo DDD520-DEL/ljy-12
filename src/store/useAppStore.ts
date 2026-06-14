@@ -25,6 +25,8 @@ import type {
   WillExecutionState,
   Branch,
   BranchCondition,
+  EmergencyContact,
+  EmergencyContactSettings,
 } from '@/types';
 import {
   generateId,
@@ -33,9 +35,13 @@ import {
   DEFAULT_WITNESS_COUNT,
   DEFAULT_HEALTH_CHECK_PERIOD,
   DEFAULT_REMINDER_DAYS,
+  DEFAULT_EMERGENCY_THRESHOLD_DAYS,
+  DEFAULT_EMERGENCY_CONFIRMATION_WINDOW,
   getHealthCheckStatus,
   getHealthCheckPeriodDays,
   addDaysToDate,
+  daysSince,
+  formatDate,
 } from '@/constants';
 
 interface AppState {
@@ -47,6 +53,8 @@ interface AppState {
   approvalGroups: WitnessApprovalGroup[];
   auditLogs: AuditLogEntry[];
   notifications: Notification[];
+  emergencyContact: EmergencyContact | null;
+  emergencySettings: EmergencyContactSettings;
 
   setCurrentUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
@@ -115,6 +123,19 @@ interface AppState {
   advanceSimulationStep: () => void;
   setSimulationPlaySpeed: (speed: number) => void;
   toggleSimulationPlay: () => void;
+
+  setEmergencyContact: (contact: Omit<EmergencyContact, 'id' | 'createdAt' | 'isVerified' | 'status'>) => void;
+  updateEmergencyContact: (updates: Partial<EmergencyContact>) => void;
+  removeEmergencyContact: () => void;
+  verifyEmergencyContact: () => void;
+  updateEmergencySettings: (settings: Partial<EmergencyContactSettings>) => void;
+  notifyEmergencyContact: () => void;
+  emergencyContactConfirmAlive: (note?: string) => void;
+  emergencyContactConfirmDeceased: (note?: string) => void;
+  emergencyContactTriggerWill: (note?: string) => void;
+  emergencyContactExtendPeriod: (days: number, note?: string) => void;
+  checkEmergencyThreshold: () => void;
+  getEmergencyContactStatus: () => { daysInactive: number; thresholdDays: number; isOverThreshold: boolean; confirmationWindowDays: number; daysSinceNotification?: number; isInConfirmationWindow: boolean };
 }
 
 const initialUser: User = {
@@ -467,6 +488,12 @@ export const useAppStore = create<AppState>()(
       approvalGroups: createInitialApprovalGroups(),
       auditLogs: createInitialAuditLogs(),
       notifications: createInitialNotifications(),
+      emergencyContact: null,
+      emergencySettings: {
+        enabled: false,
+        thresholdDays: DEFAULT_EMERGENCY_THRESHOLD_DAYS,
+        confirmationWindowDays: DEFAULT_EMERGENCY_CONFIRMATION_WINDOW,
+      },
 
       setCurrentUser: (user) => set({ currentUser: user }),
 
@@ -1697,6 +1724,303 @@ export const useAppStore = create<AppState>()(
             isPlaying: !state.simulation.isPlaying,
           },
         }));
+      },
+
+      setEmergencyContact: (contact) => {
+        const now = new Date().toISOString();
+        const newContact: EmergencyContact = {
+          ...contact,
+          id: generateId(),
+          createdAt: now,
+          isVerified: false,
+          status: 'pending',
+        };
+        set({ emergencyContact: newContact });
+        get().addAuditLog({
+          action: 'emergency_contact_added',
+          description: `添加紧急联系人：${contact.name}`,
+          resourceType: 'emergency_contact',
+          resourceId: newContact.id,
+        });
+        get().addNotification({
+          type: 'info',
+          title: '紧急联系人已添加',
+          message: `紧急联系人「${contact.name}」已添加，请通知其完成验证`,
+        });
+      },
+
+      updateEmergencyContact: (updates) => {
+        set((state) => {
+          if (!state.emergencyContact) return {};
+          return {
+            emergencyContact: { ...state.emergencyContact, ...updates },
+          };
+        });
+        get().addAuditLog({
+          action: 'emergency_contact_updated',
+          description: '更新紧急联系人信息',
+          resourceType: 'emergency_contact',
+          resourceId: get().emergencyContact?.id,
+        });
+      },
+
+      removeEmergencyContact: () => {
+        const contact = get().emergencyContact;
+        set({ emergencyContact: null });
+        if (contact) {
+          get().addAuditLog({
+            action: 'emergency_contact_removed',
+            description: `移除紧急联系人：${contact.name}`,
+            resourceType: 'emergency_contact',
+            resourceId: contact.id,
+          });
+          get().addNotification({
+            type: 'warning',
+            title: '紧急联系人已移除',
+            message: '您已移除紧急联系人，建议重新设置以保障资产安全',
+          });
+        }
+      },
+
+      verifyEmergencyContact: () => {
+        set((state) => {
+          if (!state.emergencyContact) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              isVerified: true,
+              status: 'pending',
+            },
+          };
+        });
+        get().addAuditLog({
+          action: 'emergency_contact_verified',
+          description: '紧急联系人已完成验证',
+          resourceType: 'emergency_contact',
+          resourceId: get().emergencyContact?.id,
+        });
+        get().addNotification({
+          type: 'success',
+          title: '紧急联系人已验证',
+          message: '紧急联系人身份已确认，可以参与遗嘱触发流程',
+        });
+      },
+
+      updateEmergencySettings: (settings) => {
+        set((state) => ({
+          emergencySettings: { ...state.emergencySettings, ...settings },
+        }));
+        get().addAuditLog({
+          action: 'emergency_settings_updated',
+          description: '更新紧急联系人设置',
+          resourceType: 'emergency_settings',
+        });
+      },
+
+      notifyEmergencyContact: () => {
+        const { emergencyContact, emergencySettings } = get();
+        if (!emergencyContact || !emergencySettings.enabled) return;
+
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.emergencyContact) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              status: 'notified',
+              notifiedAt: now,
+            },
+          };
+        });
+
+        get().addAuditLog({
+          action: 'emergency_contact_notified',
+          description: `已通知紧急联系人：${emergencyContact.name}`,
+          resourceType: 'emergency_contact',
+          resourceId: emergencyContact.id,
+        });
+
+        get().addNotification({
+          type: 'warning',
+          title: '紧急联系人已通知',
+          message: `已向「${emergencyContact.name}」发送状态确认通知，请等待其回复`,
+        });
+      },
+
+      emergencyContactConfirmAlive: (note) => {
+        const { emergencyContact } = get();
+        if (!emergencyContact) return;
+
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.emergencyContact || !state.will) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              status: 'confirmed_alive',
+              confirmedAt: now,
+              note,
+            },
+            will: {
+              ...state.will,
+              lastActiveAt: now,
+            },
+            currentUser: state.currentUser
+              ? { ...state.currentUser, lastLoginAt: now }
+              : state.currentUser,
+          };
+        });
+
+        get().addAuditLog({
+          action: 'emergency_contact_confirmed_alive',
+          description: `紧急联系人「${emergencyContact.name}」确认用户健在，已重置活动时间`,
+          resourceType: 'emergency_contact',
+          resourceId: emergencyContact.id,
+          newValue: note,
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '已确认用户健在',
+          message: '活动时间已重置，遗嘱触发倒计时重新计算',
+        });
+      },
+
+      emergencyContactConfirmDeceased: (note) => {
+        const { emergencyContact } = get();
+        if (!emergencyContact) return;
+
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.emergencyContact) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              status: 'confirmed_deceased',
+              confirmedAt: now,
+              note,
+            },
+          };
+        });
+
+        get().addAuditLog({
+          action: 'emergency_contact_confirmed_deceased',
+          description: `紧急联系人「${emergencyContact.name}」确认用户身故`,
+          resourceType: 'emergency_contact',
+          resourceId: emergencyContact.id,
+          newValue: note,
+        });
+
+        get().addNotification({
+          type: 'error',
+          title: '已确认用户身故',
+          message: '紧急联系人已确认用户身故，可以触发遗嘱执行',
+        });
+      },
+
+      emergencyContactTriggerWill: (note) => {
+        const { emergencyContact, triggerWill } = get();
+        if (!emergencyContact) return;
+
+        const now = new Date().toISOString();
+        set((state) => {
+          if (!state.emergencyContact) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              status: 'triggered_will',
+              confirmedAt: now,
+              note,
+            },
+          };
+        });
+
+        triggerWill();
+
+        get().addAuditLog({
+          action: 'emergency_contact_triggered_will',
+          description: `紧急联系人「${emergencyContact.name}」代为触发遗嘱执行`,
+          resourceType: 'emergency_contact',
+          resourceId: emergencyContact.id,
+          newValue: note,
+        });
+      },
+
+      emergencyContactExtendPeriod: (days, note) => {
+        const { emergencyContact, will } = get();
+        if (!emergencyContact || !will) return;
+
+        const now = new Date().toISOString();
+        const extendedDate = addDaysToDate(will.lastActiveAt, days);
+
+        set((state) => {
+          if (!state.emergencyContact || !state.will) return {};
+          return {
+            emergencyContact: {
+              ...state.emergencyContact,
+              status: 'extended_period',
+              confirmedAt: now,
+              extendedDays: days,
+              note,
+            },
+            will: {
+              ...state.will,
+              lastActiveAt: extendedDate,
+            },
+          };
+        });
+
+        get().addAuditLog({
+          action: 'emergency_contact_extended_period',
+          description: `紧急联系人「${emergencyContact.name}」延长观察期 ${days} 天`,
+          resourceType: 'emergency_contact',
+          resourceId: emergencyContact.id,
+          newValue: JSON.stringify({ days, note }),
+        });
+
+        get().addNotification({
+          type: 'info',
+          title: '观察期已延长',
+          message: `遗嘱触发观察期已延长 ${days} 天，延长至 ${formatDate(extendedDate)}`,
+        });
+      },
+
+      checkEmergencyThreshold: () => {
+        const { will, emergencyContact, emergencySettings, notifyEmergencyContact } = get();
+        if (!will || !emergencyContact || !emergencySettings.enabled) return;
+        if (!emergencyContact.isVerified) return;
+
+        const daysInactive = daysSince(will.lastActiveAt);
+        const isOverThreshold = daysInactive >= emergencySettings.thresholdDays;
+
+        if (isOverThreshold && emergencyContact.status === 'pending') {
+          notifyEmergencyContact();
+        }
+      },
+
+      getEmergencyContactStatus: () => {
+        const { will, emergencySettings, emergencyContact } = get();
+        const daysInactive = will ? daysSince(will.lastActiveAt) : 0;
+        const thresholdDays = emergencySettings.thresholdDays;
+        const isOverThreshold = daysInactive >= thresholdDays;
+        const confirmationWindowDays = emergencySettings.confirmationWindowDays;
+
+        let daysSinceNotification: number | undefined;
+        let isInConfirmationWindow = false;
+
+        if (emergencyContact?.notifiedAt) {
+          daysSinceNotification = daysSince(emergencyContact.notifiedAt);
+          isInConfirmationWindow = daysSinceNotification <= confirmationWindowDays;
+        }
+
+        return {
+          daysInactive,
+          thresholdDays,
+          isOverThreshold,
+          confirmationWindowDays,
+          daysSinceNotification,
+          isInConfirmationWindow,
+        };
       },
     }),
     {
