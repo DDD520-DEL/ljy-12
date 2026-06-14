@@ -1727,6 +1727,18 @@ export const useAppStore = create<AppState>()(
       },
 
       setEmergencyContact: (contact) => {
+        const { heirs } = get();
+        const isDuplicateWithHeir = heirs.some(
+          (h) => h.name.trim() === contact.name.trim()
+        );
+        if (isDuplicateWithHeir) {
+          get().addNotification({
+            type: 'error',
+            title: '添加失败',
+            message: `「${contact.name}」已在继承人名单中，紧急联系人不能同时为继承人`,
+          });
+          return;
+        }
         const now = new Date().toISOString();
         const newContact: EmergencyContact = {
           ...contact,
@@ -1750,6 +1762,22 @@ export const useAppStore = create<AppState>()(
       },
 
       updateEmergencyContact: (updates) => {
+        const { heirs, emergencyContact } = get();
+        if (!emergencyContact) return;
+        if (updates.name) {
+          const newName = updates.name.trim();
+          const isDuplicateWithHeir = heirs.some(
+            (h) => h.name.trim() === newName
+          );
+          if (isDuplicateWithHeir) {
+            get().addNotification({
+              type: 'error',
+              title: '更新失败',
+              message: `「${newName}」已在继承人名单中，紧急联系人不能同时为继承人`,
+            });
+            return;
+          }
+        }
         set((state) => {
           if (!state.emergencyContact) return {};
           return {

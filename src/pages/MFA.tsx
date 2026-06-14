@@ -29,7 +29,6 @@ import { cn } from '@/lib/utils';
 import {
   EMERGENCY_CONTACT_STATUS_LABELS,
   EMERGENCY_CONTACT_STATUS_COLORS,
-  RELATIONSHIP_LABELS,
 } from '@/constants';
 
 const base32ToHex = (base32: string): string => {
@@ -336,6 +335,14 @@ export default function MFA() {
     e.preventDefault();
     if (!emergencyForm.name || !emergencyForm.email) return;
 
+    const isDuplicateWithHeir = heirs.some(
+      (h) => h.name.trim() === emergencyForm.name.trim()
+    );
+    if (isDuplicateWithHeir) {
+      alert(`「${emergencyForm.name}」已在继承人名单中，紧急联系人不能同时为继承人`);
+      return;
+    }
+
     if (editingEmergency && emergencyContact) {
       updateEmergencyContact({
         name: emergencyForm.name,
@@ -393,7 +400,10 @@ export default function MFA() {
 
   const availableRelationships = [
     '配偶', '子女', '父母', '兄弟姐妹', '朋友', '律师', '医生', '其他'
-  ].filter(r => !heirs.some(h => h.name === emergencyForm.name && RELATIONSHIP_LABELS[h.relationship] === r));
+  ];
+  const isHeirNameDuplicate = heirs.some(
+    (h) => h.name.trim() === emergencyForm.name.trim()
+  );
 
   return (
     <div className="space-y-6">
@@ -1026,8 +1036,19 @@ export default function MFA() {
                   value={emergencyForm.name}
                   onChange={(e) => setEmergencyForm({ ...emergencyForm, name: e.target.value })}
                   placeholder="请输入紧急联系人姓名"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                  className={cn(
+                    "w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent",
+                    isHeirNameDuplicate
+                      ? "border-red-400 focus:ring-red-500 bg-red-50"
+                      : "border-gray-200 focus:ring-rose-500"
+                  )}
                 />
+                {isHeirNameDuplicate && emergencyForm.name && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    「{emergencyForm.name}」已在继承人名单中，紧急联系人不能同时为继承人
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1120,7 +1141,7 @@ export default function MFA() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!emergencyForm.name || !emergencyForm.email}
+                  disabled={!emergencyForm.name || !emergencyForm.email || isHeirNameDuplicate}
                   className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {editingEmergency ? '保存修改' : '添加联系人'}
