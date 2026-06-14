@@ -12,6 +12,7 @@ import {
   PieChart,
   KeyRound,
   Heart,
+  BookTemplate,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -23,6 +24,7 @@ const navItems = [
   { path: '/vault', label: '密码保险箱', icon: KeyRound },
   { path: '/heirs', label: '继承人管理', icon: Users },
   { path: '/will', label: '数字遗嘱', icon: FileText },
+  { path: '/will-templates', label: '遗嘱模板库', icon: BookTemplate },
   { path: '/donation', label: '公益捐赠', icon: Heart },
   { path: '/simulation', label: '沙箱模拟', icon: Sparkles },
   { path: '/mfa', label: '身份验证', icon: Shield },

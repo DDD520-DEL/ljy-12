@@ -35,7 +35,7 @@ import {
   Calendar,
   Fingerprint,
   RefreshCw,
-  Log,
+  Logs,
   LockKeyhole,
   Hash,
   FileText,
@@ -664,7 +664,7 @@ export default function PasswordVault() {
         <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-gray-800 to-slate-900 text-white shadow-xl">
           <div className="flex items-start gap-5">
             <div className="p-3 rounded-xl bg-white/10 backdrop-blur">
-              <Log className="w-7 h-7" />
+              <Logs className="w-7 h-7" />
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold mb-2">区块链式审计日志</h3>
@@ -1636,7 +1636,7 @@ export default function PasswordVault() {
 
             <div className="mt-6 p-4 rounded-2xl bg-gradient-to-r from-slate-900/5 to-gray-800/5 border border-slate-200">
               <div className="flex items-start gap-3">
-                <Log className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+                <Logs className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-slate-600 leading-relaxed">
                   <p className="font-semibold text-slate-700 mb-1">审计日志已记录</p>
                   <p>

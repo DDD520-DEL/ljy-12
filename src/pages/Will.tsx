@@ -31,6 +31,7 @@ import {
   Heart,
   ExternalLink,
   CheckCircle2,
+  BookTemplate,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -256,6 +257,13 @@ export default function Will() {
           <p className="text-gray-500 mt-1">设置触发条件和资产执行流程</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            to="/will-templates"
+            className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors border border-amber-200"
+          >
+            <BookTemplate className="w-5 h-5" />
+            使用模板
+          </Link>
           <Link
             to="/simulation"
             className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors border border-purple-200"

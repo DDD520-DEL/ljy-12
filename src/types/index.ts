@@ -226,6 +226,38 @@ export interface DigitalWill {
   triggeredAt?: string;
 }
 
+export type WillTemplateCategory = 'family' | 'diversified' | 'simple';
+
+export interface WillTemplate {
+  id: string;
+  category: WillTemplateCategory;
+  name: string;
+  description: string;
+  longDescription: string;
+  icon: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  tags: string[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  estimatedTime: string;
+  suitableFor: string[];
+  notSuitableFor: string[];
+  willConfig: Omit<DigitalWill, 'id' | 'ownerId' | 'status' | 'lastActiveAt' | 'createdAt' | 'updatedAt'>;
+  executionFlow: {
+    title: string;
+    description: string;
+    duration: string;
+    icon: string;
+  }[];
+  keyFeatures: string[];
+  customizableParams: {
+    name: string;
+    type: 'trigger' | 'step' | 'witness' | 'lawyer';
+    description: string;
+  }[];
+}
+
 export interface Witness {
   id: string;
   name: string;

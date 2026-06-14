@@ -6,6 +6,7 @@ import Assets from "@/pages/Assets";
 import PasswordVault from "@/pages/PasswordVault";
 import Heirs from "@/pages/Heirs";
 import Will from "@/pages/Will";
+import WillTemplates from "@/pages/WillTemplates";
 import MFA from "@/pages/MFA";
 import Witnesses from "@/pages/Witnesses";
 import AuditLog from "@/pages/AuditLog";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/vault" element={<PasswordVault />} />
           <Route path="/heirs" element={<Heirs />} />
           <Route path="/will" element={<Will />} />
+          <Route path="/will-templates" element={<WillTemplates />} />
           <Route path="/simulation" element={<Simulation />} />
           <Route path="/mfa" element={<MFA />} />
           <Route path="/witnesses" element={<Witnesses />} />
