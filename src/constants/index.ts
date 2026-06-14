@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel, CharityCategory, DonationItemType, DonationStatus, Charity, WillTemplate, WillTemplateCategory, HeirVerificationStatus, VerificationMaterialType } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel, CharityCategory, DonationItemType, DonationStatus, Charity, WillTemplate, WillTemplateCategory, HeirVerificationStatus, VerificationMaterialType, AssetNoteCategory } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -588,6 +588,41 @@ export const DONATION_STATUS_COLORS: Record<DonationStatus, string> = {
   executing: 'bg-blue-100 text-blue-700',
   completed: 'bg-purple-100 text-purple-700',
   cancelled: 'bg-red-100 text-red-700',
+};
+
+export const ASSET_NOTE_CATEGORY_LABELS: Record<AssetNoteCategory, string> = {
+  inheritance_tips: '继承注意事项',
+  emotional_message: '情感寄语',
+  operation_guide: '操作指引',
+  other: '其他备注',
+};
+
+export const ASSET_NOTE_CATEGORY_COLORS: Record<AssetNoteCategory, string> = {
+  inheritance_tips: 'bg-amber-50 text-amber-700 border-amber-200',
+  emotional_message: 'bg-rose-50 text-rose-700 border-rose-200',
+  operation_guide: 'bg-blue-50 text-blue-700 border-blue-200',
+  other: 'bg-gray-50 text-gray-700 border-gray-200',
+};
+
+export const ASSET_NOTE_CATEGORY_BADGE_COLORS: Record<AssetNoteCategory, string> = {
+  inheritance_tips: 'bg-amber-500',
+  emotional_message: 'bg-rose-500',
+  operation_guide: 'bg-blue-500',
+  other: 'bg-gray-500',
+};
+
+export const ASSET_NOTE_CATEGORY_ICONS: Record<AssetNoteCategory, string> = {
+  inheritance_tips: '⚠️',
+  emotional_message: '💝',
+  operation_guide: '📖',
+  other: '📝',
+};
+
+export const ASSET_NOTE_CATEGORY_DESCRIPTIONS: Record<AssetNoteCategory, string> = {
+  inheritance_tips: '记录资产继承过程中的重要注意事项、法律提示或特殊要求',
+  emotional_message: '写下给继承人的情感寄语、嘱托或珍贵的家庭记忆',
+  operation_guide: '详细说明资产的使用方法、操作步骤或管理指引',
+  other: '其他类型的备注内容，如附加信息或补充说明',
 };
 
 export const PRESET_CHARITIES: Charity[] = [

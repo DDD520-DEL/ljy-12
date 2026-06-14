@@ -35,6 +35,12 @@ import {
   Unlock,
   Hourglass,
   KeyRound,
+  MessageSquare,
+  Star,
+  StarOff,
+  FileText,
+  Eye,
+  Filter,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -54,9 +60,15 @@ import {
   getTimeCapsuleStatus,
   getDaysUntilUnlock,
   CREDENTIAL_CATEGORY_LABELS,
+  ASSET_NOTE_CATEGORY_LABELS,
+  ASSET_NOTE_CATEGORY_COLORS,
+  ASSET_NOTE_CATEGORY_BADGE_COLORS,
+  ASSET_NOTE_CATEGORY_ICONS,
+  ASSET_NOTE_CATEGORY_DESCRIPTIONS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule, TimeCapsuleStatus } from '@/types';
+import type { DigitalAsset, AssetType, HealthCheckPeriod, ReminderRule, TimeCapsuleStatus, AssetNote, AssetNoteCategory } from '@/types';
+import RichTextEditor from '@/components/RichTextEditor';
 
 const typeIcons: Record<AssetType, typeof Share2> = {
   social_media: Share2,
@@ -94,6 +106,13 @@ export default function Assets() {
   const unlockTimeCapsule = useAppStore((state) => state.unlockTimeCapsule);
   const credentials = useAppStore((state) => state.credentials);
   const getCredentialsByAsset = useAppStore((state) => state.getCredentialsByAsset);
+  const currentUser = useAppStore((state) => state.currentUser);
+  const assetNotes = useAppStore((state) => state.assetNotes);
+  const addAssetNote = useAppStore((state) => state.addAssetNote);
+  const updateAssetNote = useAppStore((state) => state.updateAssetNote);
+  const deleteAssetNote = useAppStore((state) => state.deleteAssetNote);
+  const getAssetNotesByAsset = useAppStore((state) => state.getAssetNotesByAsset);
+  const toggleAssetNoteImportant = useAppStore((state) => state.toggleAssetNoteImportant);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<AssetType | 'all' | 'capsule'>('all');
@@ -102,6 +121,20 @@ export default function Assets() {
   const [showBulkHeirModal, setShowBulkHeirModal] = useState(false);
   const [showBulkTypeModal, setShowBulkTypeModal] = useState(false);
   const [showCapsuleModal, setShowCapsuleModal] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showNoteListModal, setShowNoteListModal] = useState(false);
+  const [noteAsset, setNoteAsset] = useState<DigitalAsset | null>(null);
+  const [noteListAsset, setNoteListAsset] = useState<DigitalAsset | null>(null);
+  const [editingNote, setEditingNote] = useState<AssetNote | null>(null);
+  const [noteFilter, setNoteFilter] = useState<AssetNoteCategory | 'all'>('all');
+  const [noteForm, setNoteForm] = useState({
+    category: 'inheritance_tips' as AssetNoteCategory,
+    title: '',
+    content: '',
+    contentHtml: '',
+    isImportant: false,
+    tags: '' as string,
+  });
   const [capsuleAsset, setCapsuleAsset] = useState<DigitalAsset | null>(null);
   const [capsuleForm, setCapsuleForm] = useState({
     enabled: true,
@@ -294,6 +327,107 @@ export default function Assets() {
     if (confirm('确定要手动解锁此时间胶囊吗？解锁后资产将对继承人和见证人可见。')) {
       unlockTimeCapsule(assetId);
     }
+  };
+
+  const handleOpenNoteModal = (asset: DigitalAsset, note?: AssetNote) => {
+    setNoteAsset(asset);
+    if (note) {
+      setEditingNote(note);
+      setNoteForm({
+        category: note.category,
+        title: note.title,
+        content: note.content,
+        contentHtml: note.contentHtml || '',
+        isImportant: note.isImportant,
+        tags: note.tags.join(', '),
+      });
+    } else {
+      setEditingNote(null);
+      setNoteForm({
+        category: 'inheritance_tips',
+        title: '',
+        content: '',
+        contentHtml: '',
+        isImportant: false,
+        tags: '',
+      });
+    }
+    setShowNoteModal(true);
+  };
+
+  const handleCloseNoteModal = () => {
+    setShowNoteModal(false);
+    setNoteAsset(null);
+    setEditingNote(null);
+  };
+
+  const handleOpenNoteListModal = (asset: DigitalAsset) => {
+    setNoteListAsset(asset);
+    setNoteFilter('all');
+    setShowNoteListModal(true);
+  };
+
+  const handleCloseNoteListModal = () => {
+    setShowNoteListModal(false);
+    setNoteListAsset(null);
+  };
+
+  const handleNoteSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noteAsset) return;
+    if (!noteForm.title.trim()) {
+      alert('请输入备注标题');
+      return;
+    }
+
+    const tagsArray = noteForm.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    if (editingNote) {
+      updateAssetNote(editingNote.id, {
+        category: noteForm.category,
+        title: noteForm.title,
+        content: noteForm.content,
+        contentHtml: noteForm.contentHtml,
+        isImportant: noteForm.isImportant,
+        tags: tagsArray,
+      });
+      addNotification({
+        type: 'success',
+        title: '备注已更新',
+        message: `资产「${noteAsset.name}」的备注「${noteForm.title}」已更新`,
+      });
+    } else {
+      addAssetNote({
+        assetId: noteAsset.id,
+        category: noteForm.category,
+        title: noteForm.title,
+        content: noteForm.content,
+        contentHtml: noteForm.contentHtml,
+        authorId: currentUser?.id,
+        authorName: currentUser?.name,
+        isImportant: noteForm.isImportant,
+        tags: tagsArray,
+      });
+      addNotification({
+        type: 'success',
+        title: '备注已添加',
+        message: `已为资产「${noteAsset.name}」添加备注「${noteForm.title}」`,
+      });
+    }
+    handleCloseNoteModal();
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    if (!confirm('确定要删除这条备注吗？删除后无法恢复。')) return;
+    deleteAssetNote(noteId);
+    addNotification({
+      type: 'info',
+      title: '备注已删除',
+      message: '备注已成功删除',
+    });
   };
 
   const handleBulkHeirSubmit = () => {
@@ -805,6 +939,41 @@ export default function Assets() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        handleOpenNoteListModal(asset);
+                      }}
+                      className={cn(
+                        'p-2 rounded-lg transition-colors relative group',
+                        getAssetNotesByAsset(asset.id).length > 0
+                          ? 'text-violet-500 hover:text-violet-700 hover:bg-violet-50'
+                          : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'
+                      )}
+                      title="备注留言"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      {getAssetNotesByAsset(asset.id).length > 0 && (
+                        <>
+                          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-violet-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            {getAssetNotesByAsset(asset.id).length}
+                          </span>
+                          {getAssetNotesByAsset(asset.id).some((n) => n.isImportant) && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full ring-1 ring-white"></span>
+                          )}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenNoteModal(asset);
+                      }}
+                      className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                      title="添加备注"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleOpenCapsuleModal(asset);
                       }}
                       className={cn(
@@ -908,7 +1077,7 @@ export default function Assets() {
                   );
                 })()}
 
-                {(() => {
+                  {(() => {
                   const assetCredentials = getCredentialsByAsset(asset.id);
                   if (assetCredentials.length === 0) return null;
                   const categories = new Map<string, number>();
@@ -949,6 +1118,61 @@ export default function Assets() {
                           </p>
                         </div>
                       </div>
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const notes = getAssetNotesByAsset(asset.id);
+                  if (notes.length === 0) return null;
+                  const importantNotes = notes.filter(n => n.isImportant);
+                  const displayNotes = importantNotes.length > 0 ? importantNotes.slice(0, 1) : notes.slice(0, 1);
+                  return (
+                    <div className="mb-4 space-y-2">
+                      {displayNotes.map((note) => (
+                        <div
+                          key={note.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenNoteListModal(asset);
+                          }}
+                          className={cn(
+                            'p-2.5 rounded-xl border cursor-pointer transition-all hover:shadow-sm group',
+                            ASSET_NOTE_CATEGORY_COLORS[note.category]
+                          )}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-base shrink-0">
+                              {ASSET_NOTE_CATEGORY_ICONS[note.category]}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <p className="text-xs font-semibold truncate flex-1">
+                                  {note.isImportant && <span className="text-amber-500 mr-0.5">★</span>}
+                                  {note.title}
+                                </p>
+                                <span className="text-[10px] opacity-75 shrink-0">
+                                  {ASSET_NOTE_CATEGORY_LABELS[note.category]}
+                                </span>
+                              </div>
+                              <p className="text-[10px] opacity-70 line-clamp-2">
+                                {note.content}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {notes.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenNoteListModal(asset);
+                          }}
+                          className="w-full text-center text-[10px] text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 py-1 rounded-lg transition-colors"
+                        >
+                          查看全部 {notes.length} 条备注 →
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
@@ -1670,6 +1894,366 @@ export default function Assets() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showNoteModal && noteAsset && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  'w-10 h-10 rounded-xl flex items-center justify-center text-lg',
+                  ASSET_NOTE_CATEGORY_COLORS[noteForm.category]
+                )}>
+                  {ASSET_NOTE_CATEGORY_ICONS[noteForm.category]}
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {editingNote ? '编辑备注' : '添加备注'}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    资产：{noteAsset.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseNoteModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleNoteSubmit} className="p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">备注分类</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(Object.keys(ASSET_NOTE_CATEGORY_LABELS) as AssetNoteCategory[]).map((cat) => (
+                    <label
+                      key={cat}
+                      className={cn(
+                        'relative flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all',
+                        noteForm.category === cat
+                          ? 'border-violet-400 bg-violet-50'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="noteCategory"
+                        value={cat}
+                        checked={noteForm.category === cat}
+                        onChange={(e) => setNoteForm({ ...noteForm, category: e.target.value as AssetNoteCategory })}
+                        className="sr-only"
+                      />
+                      <span className="text-2xl mb-1">{ASSET_NOTE_CATEGORY_ICONS[cat]}</span>
+                      <span className={cn(
+                        'text-xs font-medium text-center',
+                        noteForm.category === cat ? 'text-violet-700' : 'text-gray-600'
+                      )}>
+                        {ASSET_NOTE_CATEGORY_LABELS[cat]}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  {ASSET_NOTE_CATEGORY_DESCRIPTIONS[noteForm.category]}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">备注标题 *</label>
+                <input
+                  type="text"
+                  required
+                  value={noteForm.title}
+                  onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })}
+                  placeholder="给这条备注起个标题"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">备注内容</label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={noteForm.isImportant}
+                        onChange={(e) => setNoteForm({ ...noteForm, isImportant: e.target.checked })}
+                        className="w-3.5 h-3.5 text-amber-500 rounded focus:ring-amber-500"
+                      />
+                      <Star className={cn('w-3.5 h-3.5', noteForm.isImportant ? 'text-amber-500 fill-amber-500' : 'text-gray-400')} />
+                      标记为重要
+                    </label>
+                  </div>
+                </div>
+                <RichTextEditor
+                  value={noteForm.contentHtml}
+                  onChange={(text, html) => setNoteForm({ ...noteForm, content: text, contentHtml: html })}
+                  placeholder="在这里输入备注内容，可以使用富文本格式..."
+                  minHeight="180px"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-4 h-4 text-gray-500" />
+                    标签（可选，用逗号分隔）
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={noteForm.tags}
+                  onChange={(e) => setNoteForm({ ...noteForm, tags: e.target.value })}
+                  placeholder="例如：重要, 家人, 法律提示"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                />
+                {noteForm.tags && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {noteForm.tags.split(',').map((tag, idx) => {
+                      const trimmed = tag.trim();
+                      if (!trimmed) return null;
+                      return (
+                        <span key={idx} className="inline-flex items-center px-2 py-0.5 bg-violet-50 text-violet-700 text-xs rounded-full border border-violet-200">
+                          {trimmed}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseNoteModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {editingNote ? '保存修改' : '添加备注'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showNoteListModal && noteListAsset && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <MessageSquare className="w-5 h-5 text-violet-500" />
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    资产备注留言
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-500">
+                  {noteListAsset.name} · 共 {getAssetNotesByAsset(noteListAsset.id).length} 条备注
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleOpenNoteModal(noteListAsset)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  新增备注
+                </button>
+                <button
+                  onClick={handleCloseNoteListModal}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 shrink-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <button
+                  onClick={() => setNoteFilter('all')}
+                  className={cn(
+                    'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                    noteFilter === 'all'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  )}
+                >
+                  全部 ({getAssetNotesByAsset(noteListAsset.id).length})
+                </button>
+                {(Object.keys(ASSET_NOTE_CATEGORY_LABELS) as AssetNoteCategory[]).map((cat) => {
+                  const count = getAssetNotesByAsset(noteListAsset.id).filter((n) => n.category === cat).length;
+                  if (count === 0) return null;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setNoteFilter(cat)}
+                      className={cn(
+                        'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                        noteFilter === cat
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                      )}
+                    >
+                      {ASSET_NOTE_CATEGORY_ICONS[cat]} {ASSET_NOTE_CATEGORY_LABELS[cat]} ({count})
+                    </button>
+                  );
+                })}
+                {getAssetNotesByAsset(noteListAsset.id).filter((n) => n.isImportant).length > 0 && (
+                  <button
+                    onClick={() => setNoteFilter('all')}
+                    className="ml-auto flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                  >
+                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    重要标记 ({getAssetNotesByAsset(noteListAsset.id).filter((n) => n.isImportant).length})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {(() => {
+                const allNotes = getAssetNotesByAsset(noteListAsset.id);
+                const filteredNotes = noteFilter === 'all'
+                  ? allNotes
+                  : allNotes.filter((n) => n.category === noteFilter);
+                const sortedNotes = [...filteredNotes].sort((a, b) => {
+                  if (a.isImportant !== b.isImportant) return b.isImportant ? 1 : -1;
+                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                });
+
+                if (sortedNotes.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500">暂无{noteFilter !== 'all' ? ASSET_NOTE_CATEGORY_LABELS[noteFilter] : ''}备注</p>
+                      <button
+                        onClick={() => handleOpenNoteModal(noteListAsset)}
+                        className="mt-4 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm"
+                      >
+                        添加第一条备注
+                      </button>
+                    </div>
+                  );
+                }
+
+                return sortedNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className={cn(
+                      'rounded-2xl border overflow-hidden transition-all',
+                      note.isImportant ? 'ring-2 ring-amber-200' : '',
+                      ASSET_NOTE_CATEGORY_COLORS[note.category]
+                    )}
+                  >
+                    <div className="flex items-start justify-between p-4 pb-2">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 bg-white/80 rounded-xl flex items-center justify-center text-xl shrink-0 border border-white">
+                          {ASSET_NOTE_CATEGORY_ICONS[note.category]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h3 className="font-semibold text-gray-900 flex items-center gap-1.5">
+                              {note.isImportant && <Star className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />}
+                              {note.title}
+                            </h3>
+                            <span className={cn(
+                              'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                              'bg-white/80 border border-white text-gray-600'
+                            )}>
+                              {ASSET_NOTE_CATEGORY_LABELS[note.category]}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-gray-500">
+                            {note.authorName && (
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                {note.authorName}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDate(note.createdAt)}
+                            </span>
+                            {note.updatedAt !== note.createdAt && (
+                              <span className="text-gray-400">(已编辑)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => toggleAssetNoteImportant(note.id)}
+                          className={cn(
+                            'p-1.5 rounded-lg transition-colors',
+                            note.isImportant
+                              ? 'text-amber-500 hover:bg-amber-100'
+                              : 'text-gray-400 hover:text-amber-500 hover:bg-amber-50'
+                          )}
+                          title={note.isImportant ? '取消重要标记' : '标记为重要'}
+                        >
+                          {note.isImportant ? (
+                            <Star className="w-4 h-4 fill-amber-500" />
+                          ) : (
+                            <StarOff className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleOpenNoteModal(noteListAsset, note)}
+                          className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                          title="编辑备注"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="删除备注"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="px-4 pb-3">
+                      {note.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {note.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-1.5 py-0.5 bg-white/70 text-gray-600 text-[10px] rounded border border-white"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="px-4 pb-4">
+                      <div
+                        className="p-3 bg-white/60 rounded-xl text-sm text-gray-700 leading-relaxed border border-white prose prose-sm max-w-none [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_a]:text-violet-600 [&_a]:underline [&_strong]:font-bold [&_em]:italic"
+                        dangerouslySetInnerHTML={{ __html: note.contentHtml || note.content.replace(/\n/g, '<br>') }}
+                      />
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
           </div>
         </div>
       )}

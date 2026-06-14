@@ -47,6 +47,8 @@ import type {
   VerificationHistoryRecord,
   HeirVerificationStatus,
   VerificationMaterialType,
+  AssetNote,
+  AssetNoteCategory,
 } from '@/types';
 import {
   generateId,
@@ -226,6 +228,15 @@ interface AppState {
 
   getDonationTotalValue: () => number;
   getDonationItemValue: (item: DonationItem) => number;
+
+  assetNotes: AssetNote[];
+  addAssetNote: (note: Omit<AssetNote, 'id' | 'createdAt' | 'updatedAt'> & { authorId?: string; authorName?: string }) => void;
+  updateAssetNote: (id: string, updates: Partial<Omit<AssetNote, 'id' | 'assetId' | 'createdAt'>>) => void;
+  deleteAssetNote: (id: string) => void;
+  getAssetNotesByAsset: (assetId: string) => AssetNote[];
+  getAssetNotesByCategory: (assetId: string, category: AssetNoteCategory) => AssetNote[];
+  getImportantNotes: (assetId?: string) => AssetNote[];
+  toggleAssetNoteImportant: (id: string) => void;
 }
 
 const initialUser: User = {
@@ -1085,6 +1096,79 @@ const createInitialVaultState = (): VaultState => ({
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
 });
 
+const createInitialAssetNotes = (): AssetNote[] => [
+  {
+    id: 'note-001',
+    assetId: 'asset-001',
+    category: 'inheritance_tips',
+    title: '账号继承注意事项',
+    content: '此微信账号绑定了个人手机号，请在继承后及时更换绑定手机号。\n\n注意事项：\n1. 登录后先前往「设置-账号与安全」修改绑定手机号\n2. 支付密码需要在银行保险柜中取出硬件密钥后重置\n3. 请保留重要聊天记录的备份',
+    contentHtml: '<p>此微信账号绑定了个人手机号，请在继承后<strong>及时更换绑定手机号</strong>。</p><p><br></p><p>注意事项：</p><ol><li>登录后先前往「设置-账号与安全」修改绑定手机号</li><li>支付密码需要在银行保险柜中取出硬件密钥后重置</li><li>请保留重要聊天记录的备份</li></ol>',
+    createdAt: new Date('2024-05-15').toISOString(),
+    updatedAt: new Date('2024-05-15').toISOString(),
+    authorId: 'user-001',
+    authorName: '张明',
+    isImportant: true,
+    tags: ['重要', '手机号更换'],
+  },
+  {
+    id: 'note-002',
+    assetId: 'asset-001',
+    category: 'emotional_message',
+    title: '给芳的话',
+    content: '芳，这个微信里有我们从相识到现在的所有聊天记录，还有孩子们的成长照片。\n\n我知道你一直很珍惜这些回忆，希望它们能在我不在的时候，给你带来一些温暖。\n\n记得告诉孩子们，爸爸永远爱他们。—— 张明',
+    contentHtml: '<p>芳，这个微信里有我们从相识到现在的所有聊天记录，还有孩子们的成长照片。</p><p><br></p><p>我知道你一直很珍惜这些回忆，希望它们能在我不在的时候，给你带来一些温暖。</p><p><br></p><p>记得告诉孩子们，<strong>爸爸永远爱他们</strong>。—— 张明</p>',
+    createdAt: new Date('2024-05-20').toISOString(),
+    updatedAt: new Date('2024-05-20').toISOString(),
+    authorId: 'user-001',
+    authorName: '张明',
+    isImportant: true,
+    tags: ['情感', '家人'],
+  },
+  {
+    id: 'note-003',
+    assetId: 'asset-002',
+    category: 'operation_guide',
+    title: '百度网盘使用指引',
+    content: '亲爱的伟伟：\n\n百度网盘中存放了全家人这些年的照片和视频。\n\n📁 目录结构：\n- /家庭照片/：按年份分类的照片\n- /重要文档/：房产证、学历证明等扫描件\n- /工作资料/：我的工作项目备份\n\n💡 操作建议：\n1. 建议下载「百度网盘」客户端，体验更好\n2. 可以将重要照片下载到本地硬盘做双备份\n3. 里面有你小时候的视频，记得看看',
+    contentHtml: '<p>亲爱的伟伟：</p><p><br></p><p>百度网盘中存放了全家人这些年的照片和视频。</p><p><br></p><p>📁 目录结构：</p><ul><li>/家庭照片/：按年份分类的照片</li><li>/重要文档/：房产证、学历证明等扫描件</li><li>/工作资料/：我的工作项目备份</li></ul><p><br></p><p>💡 操作建议：</p><ol><li>建议下载「百度网盘」客户端，体验更好</li><li>可以将重要照片下载到本地硬盘做双备份</li><li>里面有你小时候的视频，记得看看 😊</li></ol>',
+    createdAt: new Date('2024-06-01').toISOString(),
+    updatedAt: new Date('2024-06-01').toISOString(),
+    authorId: 'user-001',
+    authorName: '张明',
+    isImportant: false,
+    tags: ['操作指引', '家庭相册'],
+  },
+  {
+    id: 'note-004',
+    assetId: 'asset-003',
+    category: 'inheritance_tips',
+    title: '比特币钱包继承重要提示',
+    content: '⚠️ 极高价值资产，请务必仔细阅读！\n\n【资产说明】\n约0.5个比特币，存储在硬件冷钱包中。\n\n【取件流程】\n1. 联系王律师（律师见证下开启）\n2. 前往中国工商银行北京分行营业部\n3. 开启保险柜编号 A-2088\n4. 内有硬件钱包 + 助记词纸质备份\n\n【安全提示】\n- 绝对不要在联网电脑上输入助记词\n- 使用官方钱包软件进行转账\n- 建议分多次小额转账，避免引起关注\n- 如有疑问，先咨询王律师',
+    contentHtml: '<p><strong>⚠️ 极高价值资产，请务必仔细阅读！</strong></p><p><br></p><p>【资产说明】</p><p>约0.5个比特币，存储在硬件冷钱包中。</p><p><br></p><p>【取件流程】</p><ol><li>联系王律师（<em>律师见证下开启</em>）</li><li>前往中国工商银行北京分行营业部</li><li>开启保险柜编号 A-2088</li><li>内有硬件钱包 + 助记词纸质备份</li></ol><p><br></p><p>【安全提示】</p><ul><li>绝对<strong>不要</strong>在联网电脑上输入助记词</li><li>使用<strong>官方钱包软件</strong>进行转账</li><li>建议分多次小额转账，避免引起关注</li><li>如有疑问，先咨询王律师</li></ul>',
+    createdAt: new Date('2024-04-10').toISOString(),
+    updatedAt: new Date('2024-06-05').toISOString(),
+    authorId: 'user-001',
+    authorName: '张明',
+    isImportant: true,
+    tags: ['最高优先级', '律师见证', '安全警示'],
+  },
+  {
+    id: 'note-005',
+    assetId: 'asset-005',
+    category: 'operation_guide',
+    title: 'Gmail邮箱账号处理指引',
+    content: '芳，这个Gmail是我主要的工作邮箱：\n\n📧 需要处理的事项：\n1. 工作相关的邮件，请转发给我的同事李伟（liwei@company.com）\n2. 各种网站注册的账号，建议逐一修改绑定邮箱\n3. 银行账单邮件请留意，不要漏看\n4. 我的简历和求职信在「工作资料」标签中\n\n💡 两步验证恢复代码已保存在密码保险箱中，请妥善保管。',
+    contentHtml: '<p>芳，这个Gmail是我主要的工作邮箱：</p><p><br></p><p>📧 需要处理的事项：</p><ol><li>工作相关的邮件，请转发给我的同事李伟（liwei@company.com）</li><li>各种网站注册的账号，建议逐一修改绑定邮箱</li><li>银行账单邮件请留意，不要漏看</li><li>我的简历和求职信在「工作资料」标签中</li></ol><p><br></p><p>💡 两步验证恢复代码已保存在密码保险箱中，请妥善保管。</p>',
+    createdAt: new Date('2024-06-08').toISOString(),
+    updatedAt: new Date('2024-06-08').toISOString(),
+    authorId: 'user-001',
+    authorName: '张明',
+    isImportant: false,
+    tags: ['工作邮箱', '转发', '恢复代码'],
+  },
+];
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -1104,6 +1188,7 @@ export const useAppStore = create<AppState>()(
       },
       credentials: createInitialCredentials(),
       vault: createInitialVaultState(),
+      assetNotes: createInitialAssetNotes(),
 
       setCurrentUser: (user) => set({ currentUser: user }),
 
@@ -4113,6 +4198,77 @@ export const useAppStore = create<AppState>()(
           resourceId: plan.id,
           newValue: 'cancelled',
         });
+      },
+
+      addAssetNote: (note) => {
+        const now = new Date().toISOString();
+        const newNote: AssetNote = {
+          ...note,
+          id: generateId(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ assetNotes: [newNote, ...state.assetNotes] }));
+        const asset = get().assets.find((a) => a.id === note.assetId);
+        get().addAuditLog({
+          action: 'asset_updated',
+          description: `为资产「${asset?.name || note.assetId}」添加备注：${note.title}`,
+          resourceType: 'asset_note',
+          resourceId: newNote.id,
+        });
+      },
+
+      updateAssetNote: (id, updates) => {
+        set((state) => ({
+          assetNotes: state.assetNotes.map((n) =>
+            n.id === id ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n
+          ),
+        }));
+        const note = get().assetNotes.find((n) => n.id === id);
+        if (note) {
+          const asset = get().assets.find((a) => a.id === note.assetId);
+          get().addAuditLog({
+            action: 'asset_updated',
+            description: `更新资产「${asset?.name || note.assetId}」的备注：${note.title}`,
+            resourceType: 'asset_note',
+            resourceId: id,
+          });
+        }
+      },
+
+      deleteAssetNote: (id) => {
+        const note = get().assetNotes.find((n) => n.id === id);
+        set((state) => ({
+          assetNotes: state.assetNotes.filter((n) => n.id !== id),
+        }));
+        if (note) {
+          const asset = get().assets.find((a) => a.id === note.assetId);
+          get().addAuditLog({
+            action: 'asset_updated',
+            description: `删除资产「${asset?.name || note.assetId}」的备注：${note.title}`,
+            resourceType: 'asset_note',
+            resourceId: id,
+          });
+        }
+      },
+
+      getAssetNotesByAsset: (assetId) => get().assetNotes.filter((n) => n.assetId === assetId),
+
+      getAssetNotesByCategory: (assetId, category) =>
+        get().assetNotes.filter((n) => n.assetId === assetId && n.category === category),
+
+      getImportantNotes: (assetId) => {
+        const notes = get().assetNotes.filter((n) => n.isImportant);
+        if (assetId) return notes.filter((n) => n.assetId === assetId);
+        return notes;
+      },
+
+      toggleAssetNoteImportant: (id) => {
+        set((state) => ({
+          assetNotes: state.assetNotes.map((n) =>
+            n.id === id ? { ...n, isImportant: !n.isImportant, updatedAt: new Date().toISOString() } : n
+          ),
+        }));
       },
     }),
     {

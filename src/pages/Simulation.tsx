@@ -26,6 +26,8 @@ import {
   GitBranch,
   Zap,
   Target,
+  MessageSquare,
+  Star,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -41,9 +43,12 @@ import {
   CONDITION_FIELD_COLORS,
   BRANCH_COLORS,
   BRANCH_COLORS_BORDER,
+  ASSET_NOTE_CATEGORY_LABELS,
+  ASSET_NOTE_CATEGORY_COLORS,
+  ASSET_NOTE_CATEGORY_ICONS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { SimulationStepDetail, ExecutionStep } from '@/types';
+import type { SimulationStepDetail, ExecutionStep, AssetNote } from '@/types';
 
 const actionIcons: Record<ExecutionStep['actionType'], typeof Bell> = {
   notify: Bell,
@@ -60,6 +65,7 @@ export default function Simulation() {
   const toggleSimulationPlay = useAppStore((state) => state.toggleSimulationPlay);
   const setSimulationPlaySpeed = useAppStore((state) => state.setSimulationPlaySpeed);
   const will = useAppStore((state) => state.will);
+  const getAssetNotesByAsset = useAppStore((state) => state.getAssetNotesByAsset);
 
   const [activeTab, setActiveTab] = useState<'timeline' | 'report'>('timeline');
 
@@ -109,7 +115,27 @@ export default function Simulation() {
         s.notifyTargets.length > 0 && `  通知对象 (${s.notifyTargets.length}人):`,
         ...s.notifyTargets.map(t => `    - ${t.name} (${SIMULATION_ROLE_LABELS[t.role]}) - ${SIMULATION_NOTIFY_METHOD_LABELS[t.notificationMethod]}: ${t.email}${t.phone ? ` / ${t.phone}` : ''}`),
         s.transferItems.length > 0 && `  移交资产 (${s.transferItems.length}项):`,
-        ...s.transferItems.map(a => `    - ${a.assetName} [${ASSET_TYPE_LABELS[a.assetType]}] → ${a.heirName}${a.assetValue ? ` (¥${a.assetValue.toLocaleString()})` : ''}`),
+        ...s.transferItems.map(a => {
+          const assetLines = [`    - ${a.assetName} [${ASSET_TYPE_LABELS[a.assetType]}] → ${a.heirName}${a.assetValue ? ` (¥${a.assetValue.toLocaleString()})` : ''}`];
+          if (a.transferInstructions) assetLines.push(`      移交指引: ${a.transferInstructions}`);
+          const notes = getAssetNotesByAsset(a.assetId);
+          if (notes.length > 0) {
+            assetLines.push(`      【资产备注与寄语 (${notes.length} 条) — 展示给 ${a.heirName}】`);
+            notes
+              .sort((x, y) => {
+                if (x.isImportant !== y.isImportant) return y.isImportant ? 1 : -1;
+                return new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime();
+              })
+              .forEach((note, idx) => {
+                const imp = note.isImportant ? ' ★重要' : '';
+                assetLines.push(`      ${idx + 1}. [${ASSET_NOTE_CATEGORY_ICONS[note.category]} ${ASSET_NOTE_CATEGORY_LABELS[note.category]}]${imp} ${note.title ? '《' + note.title + '》' : ''} (${new Date(note.createdAt).toLocaleDateString('zh-CN')})`);
+                const contentLines = note.content.split('\n').filter(Boolean);
+                contentLines.forEach(line => assetLines.push(`         ${line}`));
+                if (note.tags.length > 0) assetLines.push(`         标签: ${note.tags.map(t => '#' + t).join(' ')}`);
+              });
+          }
+          return assetLines;
+        }).flat(),
         s.warnings.length > 0 && `  风险提示:`,
         ...s.warnings.map(w => `    ⚠️  ${w}`),
       ].filter(Boolean)).flat(),
@@ -354,37 +380,110 @@ export default function Simulation() {
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {step.transferItems.map((item) => (
-                      <div
-                        key={item.assetId}
-                        className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                            <FolderKanban className="w-4 h-4 text-emerald-600" />
+                    {step.transferItems.map((item) => {
+                      const notes = getAssetNotesByAsset(item.assetId).sort((a, b) => {
+                        if (a.isImportant !== b.isImportant) return b.isImportant ? 1 : -1;
+                        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                      });
+                      return (
+                        <div key={item.assetId}>
+                          <div
+                            className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                <FolderKanban className="w-4 h-4 text-emerald-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900">{item.assetName}</p>
+                                <p className="text-xs text-gray-500">
+                                  {ASSET_TYPE_LABELS[item.assetType]}
+                                  {item.transferInstructions && ` · ${item.transferInstructions.slice(0, 30)}${item.transferInstructions.length > 30 ? '...' : ''}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                              {item.assetValue !== undefined && item.assetValue > 0 && (
+                                <span className="text-sm font-semibold text-emerald-600">
+                                  ¥{item.assetValue.toLocaleString()}
+                                </span>
+                              )}
+                              <ChevronRight className="w-4 h-4 text-gray-300" />
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-lg">
+                                <User className="w-3.5 h-3.5 text-blue-600" />
+                                <span className="text-xs font-medium text-blue-700">{item.heirName}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{item.assetName}</p>
-                            <p className="text-xs text-gray-500">
-                              {ASSET_TYPE_LABELS[item.assetType]}
-                              {item.transferInstructions && ` · ${item.transferInstructions.slice(0, 30)}${item.transferInstructions.length > 30 ? '...' : ''}`}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                          {item.assetValue !== undefined && item.assetValue > 0 && (
-                            <span className="text-sm font-semibold text-emerald-600">
-                              ¥{item.assetValue.toLocaleString()}
-                            </span>
+                          {notes.length > 0 && (
+                            <div className="mt-2 ml-4 space-y-1.5">
+                              <div className="flex items-center gap-1.5 px-3 pt-2">
+                                <MessageSquare className="w-3.5 h-3.5 text-violet-500" />
+                                <span className="text-xs font-medium text-gray-600">
+                                  资产备注与寄语 ({notes.length} 条) — 展示给 {item.heirName}
+                                </span>
+                              </div>
+                              {notes.map((note) => (
+                                <div
+                                  key={note.id}
+                                  className="p-3 rounded-xl border border-gray-100 bg-gradient-to-r from-violet-50/60 to-white ml-3"
+                                >
+                                  <div className="flex items-start justify-between gap-2 mb-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span
+                                        className={cn(
+                                          'text-[11px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1',
+                                          ASSET_NOTE_CATEGORY_COLORS[note.category]
+                                        )}
+                                      >
+                                        <span>{ASSET_NOTE_CATEGORY_ICONS[note.category]}</span>
+                                        {ASSET_NOTE_CATEGORY_LABELS[note.category]}
+                                      </span>
+                                      {note.isImportant && (
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
+                                          <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                          重要
+                                        </span>
+                                      )}
+                                      {note.title && (
+                                        <span className="text-xs font-semibold text-gray-800">
+                                          {note.title}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
+                                      {new Date(note.createdAt).toLocaleDateString('zh-CN')}
+                                    </span>
+                                  </div>
+                                  {note.contentHtml ? (
+                                    <div
+                                      className="text-xs text-gray-700 leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-a:text-blue-600 prose-strong:text-gray-900 prose-em:text-gray-700 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-1 prose-blockquote:pl-2 prose-blockquote:border-l-2 prose-blockquote:border-gray-300 prose-blockquote:text-gray-600 prose-blockquote:not-italic"
+                                      dangerouslySetInnerHTML={{ __html: note.contentHtml }}
+                                    />
+                                  ) : (
+                                    <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                      {note.content}
+                                    </p>
+                                  )}
+                                  {note.tags.length > 0 && (
+                                    <div className="flex items-center gap-1 mt-2 flex-wrap">
+                                      {note.tags.map((tag, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded"
+                                        >
+                                          #{tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           )}
-                          <ChevronRight className="w-4 h-4 text-gray-300" />
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-lg">
-                            <User className="w-3.5 h-3.5 text-blue-600" />
-                            <span className="text-xs font-medium text-blue-700">{item.heirName}</span>
-                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

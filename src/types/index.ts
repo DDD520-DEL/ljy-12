@@ -591,3 +591,20 @@ export interface DonationExecutionState {
     completed: boolean;
   }[];
 }
+
+export type AssetNoteCategory = 'inheritance_tips' | 'emotional_message' | 'operation_guide' | 'other';
+
+export interface AssetNote {
+  id: string;
+  assetId: string;
+  category: AssetNoteCategory;
+  title: string;
+  content: string;
+  contentHtml?: string;
+  createdAt: string;
+  updatedAt: string;
+  authorId?: string;
+  authorName?: string;
+  isImportant: boolean;
+  tags: string[];
+}
