@@ -5,9 +5,7 @@ import {
   ShieldCheck,
   ShieldHalf,
   Lock,
-  Unlock,
   Users,
-  UserCheck,
   Activity,
   Smartphone,
   AlertTriangle,
@@ -47,47 +45,87 @@ interface SecuritySuggestion {
   actionText?: string;
 }
 
-function evaluatePasswordStrength(password: string): { score: number; level: string; issues: string[] } {
-  let score = 0;
+function evaluatePasswordSecurity(
+  vault: { masterPassword: { lastChangedAt: string; recoveryKeyHash?: string } | null; autoLockMinutes: number; failedAttempts: number },
+  credentials: { isEncrypted: boolean }[]
+): { score: number; level: string; issues: string[]; details: { label: string; score: number; maxScore: number }[] } {
+  const details: { label: string; score: number; maxScore: number }[] = [];
   const issues: string[] = [];
+  let totalScore = 0;
 
-  if (password.length < 8) {
-    issues.push('密码长度不足8位');
-  } else if (password.length >= 12) {
-    score += 5;
+  const mp = vault.masterPassword;
+  if (mp) {
+    details.push({ label: '已设置主密码', score: 6, maxScore: 6 });
+    totalScore += 6;
   } else {
-    score += 3;
+    details.push({ label: '已设置主密码', score: 0, maxScore: 6 });
+    issues.push('尚未设置主密码');
+    return { score: 0, level: '未设置', issues, details };
   }
 
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) {
-    score += 5;
+  const now = new Date();
+  const lastChanged = new Date(mp.lastChangedAt);
+  const daysSinceChange = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24));
+  let recencyScore = 0;
+  if (daysSinceChange <= 30) {
+    recencyScore = 4;
+  } else if (daysSinceChange <= 90) {
+    recencyScore = 3;
+  } else if (daysSinceChange <= 180) {
+    recencyScore = 2;
   } else {
-    issues.push('缺少大小写字母组合');
+    recencyScore = 0;
+    issues.push(`主密码已使用 ${daysSinceChange} 天，建议定期更换`);
   }
+  details.push({ label: '密码定期更换', score: recencyScore, maxScore: 4 });
+  totalScore += recencyScore;
 
-  if (/\d/.test(password)) {
-    score += 5;
+  if (mp.recoveryKeyHash) {
+    details.push({ label: '设置恢复密钥', score: 3, maxScore: 3 });
+    totalScore += 3;
   } else {
-    issues.push('缺少数字');
+    details.push({ label: '设置恢复密钥', score: 0, maxScore: 3 });
+    issues.push('未设置恢复密钥，主密码遗忘将无法找回');
   }
 
-  if (/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]/.test(password)) {
-    score += 5;
+  let autoLockScore = 0;
+  if (vault.autoLockMinutes <= 5) {
+    autoLockScore = 3;
+  } else if (vault.autoLockMinutes <= 15) {
+    autoLockScore = 2;
+  } else if (vault.autoLockMinutes <= 30) {
+    autoLockScore = 1;
   } else {
-    issues.push('缺少特殊字符');
+    issues.push('自动锁定时间过长，存在安全隐患');
+  }
+  details.push({ label: '自动锁定配置', score: autoLockScore, maxScore: 3 });
+  totalScore += autoLockScore;
+
+  const allEncrypted = credentials.length > 0 && credentials.every((c) => c.isEncrypted);
+  const encryptedCount = credentials.filter((c) => c.isEncrypted).length;
+  if (credentials.length === 0) {
+    details.push({ label: '凭据加密状态', score: 2, maxScore: 2 });
+    totalScore += 2;
+  } else if (allEncrypted) {
+    details.push({ label: '凭据加密状态', score: 2, maxScore: 2 });
+    totalScore += 2;
+  } else {
+    details.push({ label: '凭据加密状态', score: 0, maxScore: 2 });
+    issues.push(`有 ${credentials.length - encryptedCount} 个凭据未加密存储`);
   }
 
-  const commonPatterns = ['123', 'abc', 'password', 'qwerty', 'admin'];
-  const hasCommonPattern = commonPatterns.some((p) => password.toLowerCase().includes(p));
-  if (hasCommonPattern) {
-    score -= 3;
-    issues.push('包含常见弱密码模式');
+  if (vault.failedAttempts === 0) {
+    details.push({ label: '登录安全记录', score: 2, maxScore: 2 });
+    totalScore += 2;
+  } else {
+    details.push({ label: '登录安全记录', score: 0, maxScore: 2 });
+    issues.push(`存在 ${vault.failedAttempts} 次失败的登录尝试`);
   }
 
-  const level = score >= 18 ? '强' : score >= 12 ? '中' : '弱';
-  score = Math.max(0, Math.min(20, score));
+  const level = totalScore >= 16 ? '强' : totalScore >= 12 ? '中' : '弱';
+  totalScore = Math.max(0, Math.min(20, totalScore));
 
-  return { score, level, issues };
+  return { score: totalScore, level, issues, details };
 }
 
 export default function AccountSecurity() {
@@ -131,39 +169,19 @@ export default function AccountSecurity() {
       });
     }
 
-    let passwordScore = 0;
-    let passwordLevel = '未设置';
-    let passwordIssues: string[] = [];
-
-    if (vault.masterPassword) {
-      const samplePassword = 'Strong@Pass123';
-      const result = evaluatePasswordStrength(samplePassword);
-      passwordScore = result.score;
-      passwordLevel = result.level;
-      passwordIssues = result.issues;
-    } else {
-      passwordIssues = ['尚未设置主密码'];
-    }
-
-    const weakPasswordCount = credentials.filter((c) => {
-      const passwordField = c.fields.find((f) => f.type === 'password');
-      if (!passwordField) return false;
-      const result = evaluatePasswordStrength(passwordField.value);
-      return result.score < 10;
-    }).length;
-
-    if (weakPasswordCount > 0) {
-      passwordScore = Math.max(0, passwordScore - weakPasswordCount * 2);
-    }
+    const pwdSecurity = evaluatePasswordSecurity(vault, credentials);
+    const passwordScore = pwdSecurity.score;
+    const passwordLevel = pwdSecurity.level;
+    const passwordIssues = pwdSecurity.issues;
 
     dimensions.push({
       id: 'password',
-      name: '密码强度',
+      name: '密码安全',
       icon: KeyRound,
       score: passwordScore,
       maxScore: 20,
       description: vault.masterPassword
-        ? `主密码强度：${passwordLevel}，${weakPasswordCount > 0 ? `${weakPasswordCount} 个凭据密码较弱` : '所有密码强度良好'}`
+        ? `安全等级：${passwordLevel}，涵盖 ${pwdSecurity.details.length} 项安全指标`
         : '未设置主密码，密码保险箱未受保护',
       color: passwordScore >= 15 ? 'text-green-600' : passwordScore >= 10 ? 'text-amber-600' : 'text-red-600',
       bgColor: passwordScore >= 15 ? 'bg-green-100' : passwordScore >= 10 ? 'bg-amber-100' : 'bg-red-100',
@@ -175,35 +193,66 @@ export default function AccountSecurity() {
         id: 'set-master-password',
         title: '设置主密码保护保险箱',
         description: '设置强主密码以保护密码保险箱中的所有敏感凭据',
-        dimension: '密码强度',
-        estimatedGain: 15,
+        dimension: '密码安全',
+        estimatedGain: 20,
         priority: 'high',
         actionLink: '/vault',
         actionText: '去设置',
       });
-    } else if (passwordIssues.length > 0) {
-      suggestions.push({
-        id: 'improve-master-password',
-        title: '增强主密码强度',
-        description: passwordIssues.join('；'),
-        dimension: '密码强度',
-        estimatedGain: 20 - passwordScore,
-        priority: 'medium',
-        actionLink: '/vault',
-        actionText: '修改密码',
-      });
-    }
+    } else {
+      pwdSecurity.details.forEach((item) => {
+        if (item.score < item.maxScore) {
+          let suggestionId = '';
+          let title = '';
+          let description = '';
+          let priority: 'high' | 'medium' | 'low' = 'medium';
 
-    if (weakPasswordCount > 0) {
-      suggestions.push({
-        id: 'strengthen-weak-passwords',
-        title: `加强 ${weakPasswordCount} 个弱密码`,
-        description: '使用密码生成器创建更强的随机密码',
-        dimension: '密码强度',
-        estimatedGain: weakPasswordCount * 2,
-        priority: 'medium',
-        actionLink: '/vault',
-        actionText: '查看凭据',
+          switch (item.label) {
+            case '密码定期更换':
+              suggestionId = 'rotate-password';
+              title = '定期更换主密码';
+              description = '建议每30-90天更换一次主密码，降低泄露风险';
+              priority = 'medium';
+              break;
+            case '设置恢复密钥':
+              suggestionId = 'set-recovery-key';
+              title = '设置恢复密钥';
+              description = '设置密码恢复密钥，防止主密码遗忘后无法访问保险箱';
+              priority = 'high';
+              break;
+            case '自动锁定配置':
+              suggestionId = 'reduce-auto-lock';
+              title = '缩短自动锁定时间';
+              description = '设置更短的自动锁定时间，离开时自动保护保险箱';
+              priority = 'low';
+              break;
+            case '凭据加密状态':
+              suggestionId = 'encrypt-credentials';
+              title = '加密所有凭据';
+              description = '确保所有凭据都已加密存储，提升数据安全性';
+              priority = 'high';
+              break;
+            case '登录安全记录':
+              suggestionId = 'check-login-attempts';
+              title = '检查异常登录尝试';
+              description = '存在失败的登录尝试，建议检查是否为异常访问';
+              priority = 'high';
+              break;
+            default:
+              return;
+          }
+
+          suggestions.push({
+            id: suggestionId,
+            title,
+            description,
+            dimension: '密码安全',
+            estimatedGain: item.maxScore - item.score,
+            priority,
+            actionLink: '/vault',
+            actionText: '前往设置',
+          });
+        }
       });
     }
 
