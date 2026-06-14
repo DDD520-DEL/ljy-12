@@ -23,6 +23,8 @@ import type {
   WitnessApprovalGroup,
   WitnessApprovalDecision,
   WillExecutionState,
+  Branch,
+  BranchCondition,
 } from '@/types';
 import {
   generateId,
@@ -72,6 +74,8 @@ interface AppState {
   addExecutionStep: (step: Omit<ExecutionStep, 'id' | 'completed'>) => void;
   updateExecutionStep: (stepId: string, updates: Partial<ExecutionStep>) => void;
   removeExecutionStep: (stepId: string) => void;
+  evaluateBranchConditions: (stepId: string) => string | null;
+  executeStepWithBranches: (stepId: string) => void;
   triggerWill: () => void;
   activateWill: () => void;
 
@@ -871,6 +875,160 @@ export const useAppStore = create<AppState>()(
             },
           };
         });
+      },
+
+      evaluateBranchConditions: (stepId) => {
+        const { will, assets, heirs, witnesses, approvalGroups } = get();
+        if (!will) return null;
+        const step = will.executionSteps.find((s) => s.id === stepId);
+        if (!step || !step.branches || step.branches.length === 0) return null;
+
+        const evaluateCondition = (condition: BranchCondition): boolean => {
+          switch (condition.field) {
+            case 'asset_value': {
+              const targetAssets = condition.resourceIds && condition.resourceIds.length > 0
+                ? assets.filter((a) => condition.resourceIds!.includes(a.id))
+                : assets;
+              const totalValue = targetAssets.reduce((sum, a) => sum + (a.value || 0), 0);
+              const threshold = typeof condition.value === 'number' ? condition.value : Number(condition.value) || 0;
+              switch (condition.operator) {
+                case 'gt': return totalValue > threshold;
+                case 'gte': return totalValue >= threshold;
+                case 'lt': return totalValue < threshold;
+                case 'lte': return totalValue <= threshold;
+                case 'eq': return totalValue === threshold;
+                case 'neq': return totalValue !== threshold;
+                default: return false;
+              }
+            }
+            case 'heir_verified': {
+              const targetHeirs = condition.resourceIds && condition.resourceIds.length > 0
+                ? heirs.filter((h) => condition.resourceIds!.includes(h.id))
+                : heirs;
+              if (condition.operator === 'verified') {
+                return targetHeirs.every((h) => h.isVerified);
+              }
+              if (condition.operator === 'not_verified') {
+                return targetHeirs.some((h) => !h.isVerified);
+              }
+              return false;
+            }
+            case 'asset_status': {
+              const targetAssets = condition.resourceIds && condition.resourceIds.length > 0
+                ? assets.filter((a) => condition.resourceIds!.includes(a.id))
+                : assets;
+              const statusValue = typeof condition.value === 'string' ? condition.value : String(condition.value || 'active');
+              return targetAssets.some((a) => a.status === statusValue);
+            }
+            case 'witness_count': {
+              const verifiedCount = witnesses.filter((w) => w.verificationStatus === 'verified').length;
+              const threshold = typeof condition.value === 'number' ? condition.value : Number(condition.value) || 0;
+              switch (condition.operator) {
+                case 'gt': return verifiedCount > threshold;
+                case 'gte': return verifiedCount >= threshold;
+                case 'lt': return verifiedCount < threshold;
+                case 'lte': return verifiedCount <= threshold;
+                case 'eq': return verifiedCount === threshold;
+                default: return false;
+              }
+            }
+            case 'approval_progress': {
+              const completedGroups = approvalGroups.filter((g) => g.status === 'approved').length;
+              const totalGroups = approvalGroups.length;
+              const progressPercent = totalGroups > 0 ? Math.round((completedGroups / totalGroups) * 100) : 0;
+              const threshold = typeof condition.value === 'number' ? condition.value : Number(condition.value) || 0;
+              switch (condition.operator) {
+                case 'gte': return progressPercent >= threshold;
+                case 'gt': return progressPercent > threshold;
+                case 'lte': return progressPercent <= threshold;
+                case 'lt': return progressPercent < threshold;
+                case 'eq': return progressPercent === threshold;
+                default: return false;
+              }
+            }
+            case 'custom':
+              return true;
+            default:
+              return false;
+          }
+        };
+
+        const evaluateBranch = (branch: Branch): boolean => {
+          if (branch.conditions.length === 0) return false;
+          if (branch.conditionLogic === 'and') {
+            return branch.conditions.every(evaluateCondition);
+          }
+          return branch.conditions.some(evaluateCondition);
+        };
+
+        for (const branch of step.branches) {
+          if (evaluateBranch(branch)) {
+            return branch.id;
+          }
+        }
+        return null;
+      },
+
+      executeStepWithBranches: (stepId) => {
+        const { will } = get();
+        if (!will) return;
+        const step = will.executionSteps.find((s) => s.id === stepId);
+        if (!step) return;
+
+        if (step.branches && step.branches.length > 0) {
+          const triggeredBranchId = get().evaluateBranchConditions(stepId);
+          const triggeredBranch = triggeredBranchId
+            ? step.branches.find((b) => b.id === triggeredBranchId)
+            : null;
+
+          set((state) => {
+            if (!state.will) return {};
+            return {
+              will: {
+                ...state.will,
+                executionSteps: state.will.executionSteps.map((s) =>
+                  s.id === stepId ? { ...s, triggeredBranchId: triggeredBranchId || undefined } : s
+                ),
+              },
+            };
+          });
+
+          const branchDesc = triggeredBranch
+            ? `步骤「${step.title}」条件分支评估结果：触发分支「${triggeredBranch.label}」`
+            : `步骤「${step.title}」条件分支评估结果：无匹配分支，走默认路径`;
+
+          get().addAuditLog({
+            action: 'branch_condition_evaluated',
+            description: branchDesc,
+            resourceType: 'will',
+            resourceId: will.id,
+            newValue: triggeredBranchId || 'default',
+          });
+
+          if (triggeredBranch) {
+            const conditionDesc = triggeredBranch.conditions
+              .map((c) => c.label)
+              .join(triggeredBranch.conditionLogic === 'and' ? ' 且 ' : ' 或 ');
+
+            get().addAuditLog({
+              action: 'branch_path_triggered',
+              description: `分支路径「${triggeredBranch.label}」已触发，条件：${conditionDesc}，目标步骤：${triggeredBranch.targetStepIds.length}个`,
+              resourceType: 'will',
+              resourceId: will.id,
+              newValue: JSON.stringify({
+                branchId: triggeredBranch.id,
+                branchLabel: triggeredBranch.label,
+                targetStepIds: triggeredBranch.targetStepIds,
+                conditions: triggeredBranch.conditions.map((c) => ({
+                  field: c.field,
+                  operator: c.operator,
+                  value: c.value,
+                  label: c.label,
+                })),
+              }),
+            });
+          }
+        }
       },
 
       triggerWill: () => {

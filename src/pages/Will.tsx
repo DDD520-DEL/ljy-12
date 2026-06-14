@@ -20,6 +20,11 @@ import {
   Sparkles,
   ThumbsUp,
   ThumbsDown,
+  GitBranch,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  Target,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -35,9 +40,15 @@ import {
   APPROVAL_GROUP_STATUS_COLORS,
   WITNESS_APPROVAL_DECISION_LABELS,
   WITNESS_APPROVAL_DECISION_COLORS,
+  CONDITION_FIELD_LABELS,
+  CONDITION_FIELD_COLORS,
+  CONDITION_OPERATOR_LABELS,
+  BRANCH_COLORS,
+  BRANCH_COLORS_LIGHT,
+  BRANCH_COLORS_BORDER,
 } from '@/constants';
 import { cn } from '@/lib/utils';
-import type { TriggerType, ExecutionStep, WitnessApprovalDecision } from '@/types';
+import type { TriggerType, ExecutionStep, WitnessApprovalDecision, Branch, BranchCondition, ConditionField, ConditionOperator } from '@/types';
 
 export default function Will() {
   const will = useAppStore((state) => state.will);
@@ -51,6 +62,7 @@ export default function Will() {
   const addExecutionStep = useAppStore((state) => state.addExecutionStep);
   const updateExecutionStep = useAppStore((state) => state.updateExecutionStep);
   const removeExecutionStep = useAppStore((state) => state.removeExecutionStep);
+  const executeStepWithBranches = useAppStore((state) => state.executeStepWithBranches);
   const submitWitnessApproval = useAppStore((state) => state.submitWitnessApproval);
   const getApprovalGroupProgress = useAppStore((state) => state.getApprovalGroupProgress);
   const getWillExecutionState = useAppStore((state) => state.getWillExecutionState);
@@ -66,6 +78,36 @@ export default function Will() {
     actionType: 'notify' as ExecutionStep['actionType'],
     targetAssetIds: [] as string[],
     targetHeirIds: [] as string[],
+    branches: [] as Branch[],
+  });
+  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
+  const [editingBranchIdx, setEditingBranchIdx] = useState<number | null>(null);
+  const [branchForm, setBranchForm] = useState<{
+    label: string;
+    conditions: BranchCondition[];
+    conditionLogic: 'and' | 'or';
+    targetStepIds: string[];
+    color: string;
+  }>({
+    label: '',
+    conditions: [],
+    conditionLogic: 'and',
+    targetStepIds: [],
+    color: BRANCH_COLORS[0],
+  });
+  const [editingConditionIdx, setEditingConditionIdx] = useState<number | null>(null);
+  const [conditionForm, setConditionForm] = useState<{
+    field: ConditionField;
+    operator: ConditionOperator;
+    value: string;
+    label: string;
+    resourceIds: string[];
+  }>({
+    field: 'asset_value',
+    operator: 'gt',
+    value: '',
+    label: '',
+    resourceIds: [],
   });
 
   const handleOpenStepModal = (step?: ExecutionStep) => {
@@ -79,6 +121,7 @@ export default function Will() {
         actionType: step.actionType,
         targetAssetIds: step.targetAssetIds || [],
         targetHeirIds: step.targetHeirIds || [],
+        branches: step.branches || [],
       });
     } else {
       setEditingStep(null);
@@ -90,8 +133,12 @@ export default function Will() {
         actionType: 'notify',
         targetAssetIds: [],
         targetHeirIds: [],
+        branches: [],
       });
     }
+    setExpandedBranchId(null);
+    setEditingBranchIdx(null);
+    setEditingConditionIdx(null);
     setShowStepModal(true);
   };
 
@@ -558,55 +605,163 @@ export default function Will() {
             </div>
           ) : (
             <div className="space-y-3">
-              {will?.executionSteps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className="relative pl-8 pb-3 last:pb-0"
-                >
-                  {index < (will?.executionSteps.length || 0) - 1 && (
-                    <div className="absolute left-3.5 top-8 bottom-0 w-0.5 bg-gray-200" />
-                  )}
-                  <div className="absolute left-0 top-1 w-7 h-7 bg-white border-2 border-emerald-500 rounded-full flex items-center justify-center z-10">
-                    <span className="text-xs font-bold text-emerald-600">{step.order}</span>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-gray-900">{step.title}</h4>
-                          <span
-                            className={cn(
-                              'px-2 py-0.5 rounded-full text-xs font-medium',
-                              actionTypeColors[step.actionType]
+              {will?.executionSteps.map((step, index) => {
+                const hasBranches = step.branches && step.branches.length > 0;
+                const isBranchExpanded = expandedBranchId === step.id;
+                return (
+                  <div
+                    key={step.id}
+                    className="relative pl-8 pb-3 last:pb-0"
+                  >
+                    {index < (will?.executionSteps.length || 0) - 1 && (
+                      <div className="absolute left-3.5 top-8 bottom-0 w-0.5 bg-gray-200" />
+                    )}
+                    <div className="absolute left-0 top-1 w-7 h-7 bg-white border-2 border-emerald-500 rounded-full flex items-center justify-center z-10">
+                      <span className="text-xs font-bold text-emerald-600">{step.order}</span>
+                    </div>
+                    <div className={cn(
+                      'rounded-xl p-4',
+                      hasBranches ? 'bg-gray-50 border border-gray-200' : 'bg-gray-50'
+                    )}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-gray-900">{step.title}</h4>
+                            <span
+                              className={cn(
+                                'px-2 py-0.5 rounded-full text-xs font-medium',
+                                actionTypeColors[step.actionType]
+                              )}
+                            >
+                              {actionTypeLabels[step.actionType]}
+                            </span>
+                            {hasBranches && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 flex items-center gap-1">
+                                <GitBranch className="w-3 h-3" />
+                                条件分支 ({step.branches!.length})
+                              </span>
                             )}
-                          >
-                            {actionTypeLabels[step.actionType]}
-                          </span>
+                          </div>
+                          <p className="text-sm text-gray-500 mt-1">{step.description}</p>
+                          <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            触发后 {step.delayDays} 天执行
+                          </p>
+
+                          {hasBranches && (
+                            <div className="mt-3 space-y-2">
+                              <button
+                                onClick={() => setExpandedBranchId(isBranchExpanded ? null : step.id)}
+                                className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 font-medium"
+                              >
+                                {isBranchExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                {isBranchExpanded ? '收起条件分支' : '查看条件分支'}
+                              </button>
+
+                              {isBranchExpanded && (
+                                <div className="space-y-2">
+                                  {step.branches!.map((branch, bIdx) => {
+                                    const isTriggered = step.triggeredBranchId === branch.id;
+                                    const colorIdx = bIdx % BRANCH_COLORS.length;
+                                    return (
+                                      <div
+                                        key={branch.id}
+                                        className={cn(
+                                          'rounded-lg border-l-4 p-3',
+                                          BRANCH_COLORS_BORDER[colorIdx],
+                                          isTriggered ? 'ring-2 ring-emerald-300 bg-emerald-50/50' : 'bg-white'
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className={cn('w-2.5 h-2.5 rounded-full', BRANCH_COLORS[colorIdx])} />
+                                            <span className="text-sm font-medium text-gray-900">{branch.label}</span>
+                                            <span className="text-xs text-gray-400">
+                                              {branch.conditionLogic === 'and' ? '全部满足' : '任一满足'}
+                                            </span>
+                                          </div>
+                                          {isTriggered && (
+                                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                              <Zap className="w-3 h-3" />
+                                              已触发
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                          {branch.conditions.map((cond) => (
+                                            <span
+                                              key={cond.id}
+                                              className={cn(
+                                                'inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border',
+                                                CONDITION_FIELD_COLORS[cond.field]
+                                              )}
+                                            >
+                                              <Target className="w-3 h-3" />
+                                              {cond.label}
+                                            </span>
+                                          ))}
+                                          {branch.conditions.length === 0 && (
+                                            <span className="text-xs text-gray-400 italic">无条件（始终触发）</span>
+                                          )}
+                                        </div>
+                                        {branch.targetStepIds.length > 0 && (
+                                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                                            <ArrowRight className="w-3 h-3" />
+                                            <span>跳转步骤：{branch.targetStepIds.map(sid => {
+                                              const targetStep = will?.executionSteps.find(s => s.id === sid);
+                                              return targetStep ? `第${targetStep.order}步` : sid;
+                                            }).join('、')}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {!step.triggeredBranchId && (will?.status === 'triggered' || will?.status === 'executing') && (
+                                    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                                      <GitBranch className="w-4 h-4 text-gray-400" />
+                                      <span className="text-xs text-gray-500">默认路径（无分支条件匹配时）</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">{step.description}</p>
-                        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          触发后 {step.delayDays} 天执行
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenStepModal(step)}
-                          className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => removeExecutionStep(step.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1 ml-2">
+                          {(will?.status === 'triggered' || will?.status === 'executing') && hasBranches && !step.triggeredBranchId && (
+                            <button
+                              onClick={() => {
+                                executeStepWithBranches(step.id);
+                                addNotification({
+                                  type: 'info',
+                                  title: '分支评估已执行',
+                                  message: `步骤「${step.title}」的条件分支已评估`,
+                                });
+                              }}
+                              className="p-1.5 text-violet-500 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors"
+                              title="执行条件分支评估"
+                            >
+                              <Zap className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleOpenStepModal(step)}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => removeExecutionStep(step.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -707,9 +862,9 @@ export default function Will() {
 
       {showStepModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
                 {editingStep ? '编辑步骤' : '添加执行步骤'}
               </h2>
               <button
@@ -849,6 +1004,787 @@ export default function Will() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-violet-500" />
+                    条件分支
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const colorIdx = stepForm.branches.length % BRANCH_COLORS.length;
+                      setBranchForm({
+                        label: '',
+                        conditions: [],
+                        conditionLogic: 'and',
+                        targetStepIds: [],
+                        color: BRANCH_COLORS[colorIdx],
+                      });
+                      setEditingBranchIdx(stepForm.branches.length);
+                      setEditingConditionIdx(null);
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    添加分支
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">为步骤设置条件表达式，满足不同条件走不同分支路径</p>
+
+                {stepForm.branches.length === 0 && editingBranchIdx === null && (
+                  <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-xl">
+                    <GitBranch className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">暂无条件分支</p>
+                    <p className="text-xs text-gray-400 mt-1">点击上方按钮添加分支条件</p>
+                  </div>
+                )}
+
+                {stepForm.branches.map((branch, bIdx) => {
+                  const colorIdx = bIdx % BRANCH_COLORS.length;
+                  const isEditingThis = editingBranchIdx === bIdx;
+                  return (
+                    <div
+                      key={branch.id}
+                      className={cn(
+                        'mb-3 rounded-xl border-l-4 overflow-hidden',
+                        BRANCH_COLORS_BORDER[colorIdx],
+                        isEditingThis ? 'border border-gray-300 ring-2 ring-violet-100' : 'border border-gray-200'
+                      )}
+                    >
+                      <div className="p-3 bg-white">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={cn('w-3 h-3 rounded-full', BRANCH_COLORS[colorIdx])} />
+                            <span className="text-sm font-medium text-gray-900">{branch.label || `分支 ${bIdx + 1}`}</span>
+                            <span className="text-xs text-gray-400">
+                              {branch.conditionLogic === 'and' ? '全部满足' : '任一满足'} · {branch.conditions.length} 个条件
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBranchForm({
+                                  label: branch.label,
+                                  conditions: [...branch.conditions],
+                                  conditionLogic: branch.conditionLogic,
+                                  targetStepIds: [...branch.targetStepIds],
+                                  color: branch.color,
+                                });
+                                setEditingBranchIdx(bIdx);
+                                setEditingConditionIdx(null);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newBranches = stepForm.branches.filter((_, i) => i !== bIdx);
+                                setStepForm({ ...stepForm, branches: newBranches });
+                                if (editingBranchIdx === bIdx) setEditingBranchIdx(null);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {branch.conditions.map((cond) => (
+                            <span
+                              key={cond.id}
+                              className={cn(
+                                'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border',
+                                CONDITION_FIELD_COLORS[cond.field]
+                              )}
+                            >
+                              {cond.label}
+                            </span>
+                          ))}
+                          {branch.conditions.length === 0 && (
+                            <span className="text-xs text-gray-400 italic">无条件</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {editingBranchIdx !== null && editingBranchIdx >= stepForm.branches.length && (
+                  <div className="border-2 border-violet-200 rounded-xl p-4 bg-violet-50/30 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">分支名称</label>
+                      <input
+                        type="text"
+                        value={branchForm.label}
+                        onChange={(e) => setBranchForm({ ...branchForm, label: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                        placeholder="例如：高价值资产路径"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <label className="block text-xs font-medium text-gray-700">条件逻辑</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBranchForm({ ...branchForm, conditionLogic: 'and' })}
+                          className={cn(
+                            'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                            branchForm.conditionLogic === 'and'
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          )}
+                        >
+                          全部满足 (AND)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBranchForm({ ...branchForm, conditionLogic: 'or' })}
+                          className={cn(
+                            'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                            branchForm.conditionLogic === 'or'
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          )}
+                        >
+                          任一满足 (OR)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-medium text-gray-700">条件列表</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConditionForm({
+                              field: 'asset_value',
+                              operator: 'gt',
+                              value: '',
+                              label: '',
+                              resourceIds: [],
+                            });
+                            setEditingConditionIdx(branchForm.conditions.length);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          添加条件
+                        </button>
+                      </div>
+
+                      {branchForm.conditions.length === 0 && editingConditionIdx === null && (
+                        <div className="text-center py-4 border border-dashed border-gray-300 rounded-lg">
+                          <p className="text-xs text-gray-400">暂无条件，点击添加</p>
+                        </div>
+                      )}
+
+                      {branchForm.conditions.map((cond, cIdx) => (
+                        <div
+                          key={cond.id}
+                          className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-200 mb-2"
+                        >
+                          <span className={cn(
+                            'px-2 py-0.5 rounded text-xs font-medium border',
+                            CONDITION_FIELD_COLORS[cond.field]
+                          )}>
+                            {CONDITION_FIELD_LABELS[cond.field]}
+                          </span>
+                          <span className="text-xs text-gray-500">{CONDITION_OPERATOR_LABELS[cond.operator]}</span>
+                          {cond.value !== undefined && cond.value !== '' && (
+                            <span className="text-xs font-medium text-gray-700">{String(cond.value)}</span>
+                          )}
+                          <span className="text-xs text-gray-400 flex-1 truncate">{cond.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newConditions = branchForm.conditions.filter((_, i) => i !== cIdx);
+                              setBranchForm({ ...branchForm, conditions: newConditions });
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {editingConditionIdx !== null && editingConditionIdx >= branchForm.conditions.length && (
+                        <div className="p-3 bg-white rounded-lg border border-violet-200 space-y-3 mt-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">条件字段</label>
+                              <select
+                                value={conditionForm.field}
+                                onChange={(e) => {
+                                  const field = e.target.value as ConditionField;
+                                  const newForm: typeof conditionForm = { ...conditionForm, field };
+                                  if (field === 'heir_verified') {
+                                    newForm.operator = 'verified';
+                                  } else if (field === 'asset_value') {
+                                    newForm.operator = 'gt';
+                                  } else if (field === 'asset_status') {
+                                    newForm.operator = 'status_is';
+                                  } else {
+                                    newForm.operator = 'gte';
+                                  }
+                                  setConditionForm(newForm);
+                                }}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              >
+                                {(Object.keys(CONDITION_FIELD_LABELS) as ConditionField[]).map((field) => (
+                                  <option key={field} value={field}>
+                                    {CONDITION_FIELD_LABELS[field]}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">运算符</label>
+                              <select
+                                value={conditionForm.operator}
+                                onChange={(e) => setConditionForm({ ...conditionForm, operator: e.target.value as ConditionOperator })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              >
+                                {(Object.keys(CONDITION_OPERATOR_LABELS) as ConditionOperator[])
+                                  .filter((op) => {
+                                    if (conditionForm.field === 'heir_verified') return op === 'verified' || op === 'not_verified';
+                                    if (conditionForm.field === 'asset_status') return op === 'status_is' || op === 'eq' || op === 'neq';
+                                    return !['verified', 'not_verified', 'status_is', 'contains'].includes(op) || op === 'contains' && conditionForm.field === 'custom';
+                                  })
+                                  .map((op) => (
+                                    <option key={op} value={op}>
+                                      {CONDITION_OPERATOR_LABELS[op]}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {!['verified', 'not_verified'].includes(conditionForm.operator) && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">阈值</label>
+                              <input
+                                type={conditionForm.field === 'asset_value' || conditionForm.field === 'witness_count' || conditionForm.field === 'approval_progress' ? 'number' : 'text'}
+                                value={conditionForm.value}
+                                onChange={(e) => setConditionForm({ ...conditionForm, value: e.target.value })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                                placeholder={
+                                  conditionForm.field === 'asset_value' ? '资产价值阈值（元）' :
+                                  conditionForm.field === 'witness_count' ? '见证人数量阈值' :
+                                  conditionForm.field === 'approval_progress' ? '审批进度百分比' :
+                                  conditionForm.field === 'asset_status' ? 'active / inactive / transferred' :
+                                  '输入值'
+                                }
+                              />
+                            </div>
+                          )}
+
+                          {(conditionForm.field === 'asset_value' || conditionForm.field === 'asset_status') && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">关联资产</label>
+                              <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                                {assets.map((asset) => (
+                                  <label
+                                    key={asset.id}
+                                    className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={conditionForm.resourceIds.includes(asset.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setConditionForm({ ...conditionForm, resourceIds: [...conditionForm.resourceIds, asset.id] });
+                                        } else {
+                                          setConditionForm({ ...conditionForm, resourceIds: conditionForm.resourceIds.filter(id => id !== asset.id) });
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                    />
+                                    <span className="text-xs text-gray-700">{asset.name}</span>
+                                    {asset.value !== undefined && asset.value > 0 && (
+                                      <span className="text-xs text-gray-400">¥{asset.value.toLocaleString()}</span>
+                                    )}
+                                  </label>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">不选则关联全部资产</p>
+                            </div>
+                          )}
+
+                          {conditionForm.field === 'heir_verified' && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">关联继承人</label>
+                              <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                                {heirs.map((heir) => (
+                                  <label
+                                    key={heir.id}
+                                    className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={conditionForm.resourceIds.includes(heir.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setConditionForm({ ...conditionForm, resourceIds: [...conditionForm.resourceIds, heir.id] });
+                                        } else {
+                                          setConditionForm({ ...conditionForm, resourceIds: conditionForm.resourceIds.filter(id => id !== heir.id) });
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                    />
+                                    <span className="text-xs text-gray-700">{heir.name}</span>
+                                    <span className={cn(
+                                      'text-xs px-1 py-0.5 rounded',
+                                      heir.isVerified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                    )}>
+                                      {heir.isVerified ? '已验证' : '未验证'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">不选则关联全部继承人</p>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">条件描述 *</label>
+                            <input
+                              type="text"
+                              value={conditionForm.label}
+                              onChange={(e) => setConditionForm({ ...conditionForm, label: e.target.value })}
+                              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              placeholder="例如：当资产价值超过10万元时"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!conditionForm.label.trim()) return;
+                                const newCondition: BranchCondition = {
+                                  id: `cond-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                                  field: conditionForm.field,
+                                  operator: conditionForm.operator,
+                                  value: conditionForm.value ? (conditionForm.field === 'asset_value' || conditionForm.field === 'witness_count' || conditionForm.field === 'approval_progress' ? Number(conditionForm.value) : conditionForm.value) : undefined,
+                                  label: conditionForm.label,
+                                  resourceIds: conditionForm.resourceIds.length > 0 ? conditionForm.resourceIds : undefined,
+                                };
+                                setBranchForm({
+                                  ...branchForm,
+                                  conditions: [...branchForm.conditions, newCondition],
+                                });
+                                setEditingConditionIdx(null);
+                                setConditionForm({
+                                  field: 'asset_value',
+                                  operator: 'gt',
+                                  value: '',
+                                  label: '',
+                                  resourceIds: [],
+                                });
+                              }}
+                              className="px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-xs font-medium"
+                            >
+                              确认条件
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingConditionIdx(null)}
+                              className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {will && will.executionSteps.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">跳转目标步骤</label>
+                        <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                          {will.executionSteps
+                            .filter((s) => s.id !== editingStep?.id)
+                            .map((s) => (
+                              <label
+                                key={s.id}
+                                className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={branchForm.targetStepIds.includes(s.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setBranchForm({ ...branchForm, targetStepIds: [...branchForm.targetStepIds, s.id] });
+                                    } else {
+                                      setBranchForm({ ...branchForm, targetStepIds: branchForm.targetStepIds.filter(id => id !== s.id) });
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                />
+                                <span className="text-xs text-gray-700">第{s.order}步：{s.title}</span>
+                              </label>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">条件满足时跳转到指定步骤，不选则继续按顺序执行</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!branchForm.label.trim()) return;
+                          const colorIdx = editingBranchIdx % BRANCH_COLORS.length;
+                          const newBranch: Branch = {
+                            id: `branch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                            label: branchForm.label,
+                            conditions: branchForm.conditions,
+                            conditionLogic: branchForm.conditionLogic,
+                            targetStepIds: branchForm.targetStepIds,
+                            color: BRANCH_COLORS[colorIdx],
+                          };
+                          const newBranches = [...stepForm.branches];
+                          if (editingBranchIdx < newBranches.length) {
+                            newBranches[editingBranchIdx] = newBranch;
+                          } else {
+                            newBranches.push(newBranch);
+                          }
+                          setStepForm({ ...stepForm, branches: newBranches });
+                          setEditingBranchIdx(null);
+                          setEditingConditionIdx(null);
+                        }}
+                        className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium"
+                      >
+                        确认分支
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBranchIdx(null);
+                          setEditingConditionIdx(null);
+                        }}
+                        className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {editingBranchIdx !== null && editingBranchIdx < stepForm.branches.length && (
+                  <div className="border-2 border-violet-200 rounded-xl p-4 bg-violet-50/30 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">分支名称</label>
+                      <input
+                        type="text"
+                        value={branchForm.label}
+                        onChange={(e) => setBranchForm({ ...branchForm, label: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                        placeholder="例如：高价值资产路径"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <label className="block text-xs font-medium text-gray-700">条件逻辑</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBranchForm({ ...branchForm, conditionLogic: 'and' })}
+                          className={cn(
+                            'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                            branchForm.conditionLogic === 'and'
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          )}
+                        >
+                          全部满足 (AND)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBranchForm({ ...branchForm, conditionLogic: 'or' })}
+                          className={cn(
+                            'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                            branchForm.conditionLogic === 'or'
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          )}
+                        >
+                          任一满足 (OR)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-medium text-gray-700">条件列表</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConditionForm({
+                              field: 'asset_value',
+                              operator: 'gt',
+                              value: '',
+                              label: '',
+                              resourceIds: [],
+                            });
+                            setEditingConditionIdx(branchForm.conditions.length);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          添加条件
+                        </button>
+                      </div>
+
+                      {branchForm.conditions.map((cond, cIdx) => (
+                        <div
+                          key={cond.id}
+                          className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-200 mb-2"
+                        >
+                          <span className={cn(
+                            'px-2 py-0.5 rounded text-xs font-medium border',
+                            CONDITION_FIELD_COLORS[cond.field]
+                          )}>
+                            {CONDITION_FIELD_LABELS[cond.field]}
+                          </span>
+                          <span className="text-xs text-gray-500">{CONDITION_OPERATOR_LABELS[cond.operator]}</span>
+                          {cond.value !== undefined && cond.value !== '' && (
+                            <span className="text-xs font-medium text-gray-700">{String(cond.value)}</span>
+                          )}
+                          <span className="text-xs text-gray-400 flex-1 truncate">{cond.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newConditions = branchForm.conditions.filter((_, i) => i !== cIdx);
+                              setBranchForm({ ...branchForm, conditions: newConditions });
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {editingConditionIdx !== null && editingConditionIdx >= branchForm.conditions.length && (
+                        <div className="p-3 bg-white rounded-lg border border-violet-200 space-y-3 mt-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">条件字段</label>
+                              <select
+                                value={conditionForm.field}
+                                onChange={(e) => {
+                                  const field = e.target.value as ConditionField;
+                                  const newForm: typeof conditionForm = { ...conditionForm, field };
+                                  if (field === 'heir_verified') newForm.operator = 'verified';
+                                  else if (field === 'asset_value') newForm.operator = 'gt';
+                                  else if (field === 'asset_status') newForm.operator = 'status_is';
+                                  else newForm.operator = 'gte';
+                                  setConditionForm(newForm);
+                                }}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              >
+                                {(Object.keys(CONDITION_FIELD_LABELS) as ConditionField[]).map((field) => (
+                                  <option key={field} value={field}>{CONDITION_FIELD_LABELS[field]}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">运算符</label>
+                              <select
+                                value={conditionForm.operator}
+                                onChange={(e) => setConditionForm({ ...conditionForm, operator: e.target.value as ConditionOperator })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              >
+                                {(Object.keys(CONDITION_OPERATOR_LABELS) as ConditionOperator[])
+                                  .filter((op) => {
+                                    if (conditionForm.field === 'heir_verified') return op === 'verified' || op === 'not_verified';
+                                    if (conditionForm.field === 'asset_status') return op === 'status_is' || op === 'eq' || op === 'neq';
+                                    return !['verified', 'not_verified', 'status_is'].includes(op);
+                                  })
+                                  .map((op) => (
+                                    <option key={op} value={op}>{CONDITION_OPERATOR_LABELS[op]}</option>
+                                  ))}
+                              </select>
+                            </div>
+                          </div>
+                          {!['verified', 'not_verified'].includes(conditionForm.operator) && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">阈值</label>
+                              <input
+                                type={conditionForm.field === 'asset_value' || conditionForm.field === 'witness_count' || conditionForm.field === 'approval_progress' ? 'number' : 'text'}
+                                value={conditionForm.value}
+                                onChange={(e) => setConditionForm({ ...conditionForm, value: e.target.value })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                                placeholder={
+                                  conditionForm.field === 'asset_value' ? '资产价值阈值（元）' :
+                                  conditionForm.field === 'witness_count' ? '见证人数量阈值' :
+                                  conditionForm.field === 'approval_progress' ? '审批进度百分比' :
+                                  conditionForm.field === 'asset_status' ? 'active / inactive / transferred' :
+                                  '输入值'
+                                }
+                              />
+                            </div>
+                          )}
+                          {(conditionForm.field === 'asset_value' || conditionForm.field === 'asset_status') && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">关联资产</label>
+                              <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                                {assets.map((asset) => (
+                                  <label key={asset.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={conditionForm.resourceIds.includes(asset.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setConditionForm({ ...conditionForm, resourceIds: [...conditionForm.resourceIds, asset.id] });
+                                        else setConditionForm({ ...conditionForm, resourceIds: conditionForm.resourceIds.filter(id => id !== asset.id) });
+                                      }}
+                                      className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                    />
+                                    <span className="text-xs text-gray-700">{asset.name}</span>
+                                    {asset.value !== undefined && asset.value > 0 && <span className="text-xs text-gray-400">¥{asset.value.toLocaleString()}</span>}
+                                  </label>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">不选则关联全部资产</p>
+                            </div>
+                          )}
+                          {conditionForm.field === 'heir_verified' && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">关联继承人</label>
+                              <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                                {heirs.map((heir) => (
+                                  <label key={heir.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={conditionForm.resourceIds.includes(heir.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setConditionForm({ ...conditionForm, resourceIds: [...conditionForm.resourceIds, heir.id] });
+                                        else setConditionForm({ ...conditionForm, resourceIds: conditionForm.resourceIds.filter(id => id !== heir.id) });
+                                      }}
+                                      className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                    />
+                                    <span className="text-xs text-gray-700">{heir.name}</span>
+                                    <span className={cn('text-xs px-1 py-0.5 rounded', heir.isVerified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
+                                      {heir.isVerified ? '已验证' : '未验证'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">不选则关联全部继承人</p>
+                            </div>
+                          )}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">条件描述 *</label>
+                            <input
+                              type="text"
+                              value={conditionForm.label}
+                              onChange={(e) => setConditionForm({ ...conditionForm, label: e.target.value })}
+                              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                              placeholder="例如：当资产价值超过10万元时"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!conditionForm.label.trim()) return;
+                                const newCondition: BranchCondition = {
+                                  id: `cond-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                                  field: conditionForm.field,
+                                  operator: conditionForm.operator,
+                                  value: conditionForm.value ? (conditionForm.field === 'asset_value' || conditionForm.field === 'witness_count' || conditionForm.field === 'approval_progress' ? Number(conditionForm.value) : conditionForm.value) : undefined,
+                                  label: conditionForm.label,
+                                  resourceIds: conditionForm.resourceIds.length > 0 ? conditionForm.resourceIds : undefined,
+                                };
+                                setBranchForm({ ...branchForm, conditions: [...branchForm.conditions, newCondition] });
+                                setEditingConditionIdx(null);
+                                setConditionForm({ field: 'asset_value', operator: 'gt', value: '', label: '', resourceIds: [] });
+                              }}
+                              className="px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-xs font-medium"
+                            >
+                              确认条件
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingConditionIdx(null)}
+                              className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {will && will.executionSteps.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">跳转目标步骤</label>
+                        <div className="space-y-1 max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                          {will.executionSteps
+                            .filter((s) => s.id !== editingStep?.id)
+                            .map((s) => (
+                              <label key={s.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={branchForm.targetStepIds.includes(s.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setBranchForm({ ...branchForm, targetStepIds: [...branchForm.targetStepIds, s.id] });
+                                    else setBranchForm({ ...branchForm, targetStepIds: branchForm.targetStepIds.filter(id => id !== s.id) });
+                                  }}
+                                  className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                />
+                                <span className="text-xs text-gray-700">第{s.order}步：{s.title}</span>
+                              </label>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!branchForm.label.trim()) return;
+                          const colorIdx = editingBranchIdx % BRANCH_COLORS.length;
+                          const updatedBranch: Branch = {
+                            id: stepForm.branches[editingBranchIdx].id,
+                            label: branchForm.label,
+                            conditions: branchForm.conditions,
+                            conditionLogic: branchForm.conditionLogic,
+                            targetStepIds: branchForm.targetStepIds,
+                            color: BRANCH_COLORS[colorIdx],
+                          };
+                          const newBranches = [...stepForm.branches];
+                          newBranches[editingBranchIdx] = updatedBranch;
+                          setStepForm({ ...stepForm, branches: newBranches });
+                          setEditingBranchIdx(null);
+                          setEditingConditionIdx(null);
+                        }}
+                        className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium"
+                      >
+                        保存分支
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBranchIdx(null);
+                          setEditingConditionIdx(null);
+                        }}
+                        className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="flex gap-3 pt-4">
                 <button

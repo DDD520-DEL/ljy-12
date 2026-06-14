@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -86,6 +86,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   witness_approval_submitted: '提交审批意见',
   approval_group_completed: '审批组完成',
   will_execution_advanced: '遗嘱执行推进',
+  branch_condition_evaluated: '条件分支评估',
+  branch_path_triggered: '条件分支触发',
   bulk_heir_assigned: '批量分配继承人',
   bulk_type_updated: '批量修改分类',
   bulk_export_csv: '批量导出资产清单',
@@ -280,3 +282,61 @@ export const formatReadinessScore = (score: number): { label: string; color: str
   if (score >= 50) return { label: '部分就绪', color: 'text-amber-600 bg-amber-100' };
   return { label: '需要完善', color: 'text-red-600 bg-red-100' };
 };
+
+export const CONDITION_FIELD_LABELS: Record<ConditionField, string> = {
+  asset_value: '资产价值',
+  heir_verified: '继承人验证状态',
+  asset_status: '资产状态',
+  witness_count: '见证人数量',
+  approval_progress: '审批进度',
+  custom: '自定义条件',
+};
+
+export const CONDITION_FIELD_COLORS: Record<ConditionField, string> = {
+  asset_value: 'bg-emerald-100 text-emerald-700',
+  heir_verified: 'bg-blue-100 text-blue-700',
+  asset_status: 'bg-amber-100 text-amber-700',
+  witness_count: 'bg-purple-100 text-purple-700',
+  approval_progress: 'bg-cyan-100 text-cyan-700',
+  custom: 'bg-gray-100 text-gray-700',
+};
+
+export const CONDITION_OPERATOR_LABELS: Record<ConditionOperator, string> = {
+  gt: '大于',
+  gte: '大于等于',
+  lt: '小于',
+  lte: '小于等于',
+  eq: '等于',
+  neq: '不等于',
+  contains: '包含',
+  verified: '已验证',
+  not_verified: '未验证',
+  status_is: '状态为',
+};
+
+export const BRANCH_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-amber-500',
+  'bg-purple-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+];
+
+export const BRANCH_COLORS_LIGHT = [
+  'bg-blue-50 border-blue-200 text-blue-800',
+  'bg-emerald-50 border-emerald-200 text-emerald-800',
+  'bg-amber-50 border-amber-200 text-amber-800',
+  'bg-purple-50 border-purple-200 text-purple-800',
+  'bg-rose-50 border-rose-200 text-rose-800',
+  'bg-cyan-50 border-cyan-200 text-cyan-800',
+];
+
+export const BRANCH_COLORS_BORDER = [
+  'border-l-blue-500',
+  'border-l-emerald-500',
+  'border-l-amber-500',
+  'border-l-purple-500',
+  'border-l-rose-500',
+  'border-l-cyan-500',
+];

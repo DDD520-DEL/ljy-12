@@ -23,6 +23,9 @@ import {
   User,
   Sparkles,
   Gauge,
+  GitBranch,
+  Zap,
+  Target,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -34,6 +37,10 @@ import {
   formatDate,
   formatReadinessScore,
   TRIGGER_TYPE_LABELS,
+  CONDITION_FIELD_LABELS,
+  CONDITION_FIELD_COLORS,
+  BRANCH_COLORS,
+  BRANCH_COLORS_BORDER,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { SimulationStepDetail, ExecutionStep } from '@/types';
@@ -219,6 +226,86 @@ export default function Simulation() {
 
           {(step.notifyTargets.length > 0 || step.transferItems.length > 0 || step.warnings.length > 0) && (
             <div className="p-5 space-y-4 bg-gray-50/50">
+              {(() => {
+                const stepData = will?.executionSteps.find(s => s.id === step.stepId);
+                const hasBranches = stepData?.branches && stepData.branches.length > 0;
+                if (!hasBranches) return null;
+                return (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <GitBranch className="w-4 h-4 text-violet-500" />
+                      <span className="text-sm font-medium text-gray-700">
+                        条件分支 ({stepData!.branches!.length} 条路径)
+                      </span>
+                      {stepData?.triggeredBranchId && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                          <Zap className="w-3 h-3" />
+                          已触发
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {stepData!.branches!.map((branch, bIdx) => {
+                        const colorIdx = bIdx % BRANCH_COLORS.length;
+                        const isTriggered = stepData?.triggeredBranchId === branch.id;
+                        return (
+                          <div
+                            key={branch.id}
+                            className={cn(
+                              'rounded-lg border-l-4 p-3',
+                              BRANCH_COLORS_BORDER[colorIdx],
+                              isTriggered ? 'ring-2 ring-emerald-300 bg-emerald-50' : 'bg-white'
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <div className={cn('w-2 h-2 rounded-full', BRANCH_COLORS[colorIdx])} />
+                                <span className="text-sm font-medium text-gray-900">{branch.label}</span>
+                                <span className="text-xs text-gray-400">
+                                  {branch.conditionLogic === 'and' ? '全部满足' : '任一满足'}
+                                </span>
+                              </div>
+                              {isTriggered && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                  <Zap className="w-3 h-3" />
+                                  当前路径
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {branch.conditions.map((cond) => (
+                                <span
+                                  key={cond.id}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border',
+                                    CONDITION_FIELD_COLORS[cond.field]
+                                  )}
+                                >
+                                  <Target className="w-3 h-3" />
+                                  {cond.label}
+                                </span>
+                              ))}
+                              {branch.conditions.length === 0 && (
+                                <span className="text-xs text-gray-400 italic">无条件（始终触发）</span>
+                              )}
+                            </div>
+                            {branch.targetStepIds.length > 0 && (
+                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                <ChevronRight className="w-3 h-3" />
+                                <span>跳转：{branch.targetStepIds.map(sid => {
+                                  const targetStep = will?.executionSteps.find(s => s.id === sid);
+                                  return targetStep ? `第${targetStep.order}步` : sid;
+                                }).join('、')}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {step.notifyTargets.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-2">

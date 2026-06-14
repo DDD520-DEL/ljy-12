@@ -53,6 +53,8 @@ export type AuditActionType =
   | 'witness_approval_submitted'
   | 'approval_group_completed'
   | 'will_execution_advanced'
+  | 'branch_condition_evaluated'
+  | 'branch_path_triggered'
   | 'bulk_heir_assigned'
   | 'bulk_type_updated'
   | 'bulk_export_csv';
@@ -102,6 +104,28 @@ export interface TriggerCondition {
   lawyerApprovalRequired?: boolean;
 }
 
+export type ConditionOperator = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq' | 'contains' | 'verified' | 'not_verified' | 'status_is';
+
+export type ConditionField = 'asset_value' | 'heir_verified' | 'asset_status' | 'witness_count' | 'approval_progress' | 'custom';
+
+export interface BranchCondition {
+  id: string;
+  field: ConditionField;
+  operator: ConditionOperator;
+  value?: string | number;
+  label: string;
+  resourceIds?: string[];
+}
+
+export interface Branch {
+  id: string;
+  label: string;
+  conditions: BranchCondition[];
+  conditionLogic: 'and' | 'or';
+  targetStepIds: string[];
+  color: string;
+}
+
 export interface ExecutionStep {
   id: string;
   order: number;
@@ -111,6 +135,8 @@ export interface ExecutionStep {
   actionType: 'notify' | 'transfer' | 'reveal_credentials' | 'delete_data';
   targetAssetIds?: string[];
   targetHeirIds?: string[];
+  branches?: Branch[];
+  triggeredBranchId?: string;
   completed: boolean;
   completedAt?: string;
 }
