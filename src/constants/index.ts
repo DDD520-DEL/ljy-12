@@ -404,3 +404,21 @@ export const getDaysUntilUnlock = (unlockDate: string): number => {
   const diffTime = target.getTime() - now.getTime();
   return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 };
+
+export const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  asset: '数字资产',
+  heir: '继承人',
+  will: '数字遗嘱',
+  witness: '见证人',
+  approval_group: '审批组',
+  user: '用户账户',
+  notification: '通知',
+  emergency_contact: '紧急联系人',
+  settings: '系统设置',
+  time_capsule: '时间胶囊',
+};
+
+export const getResourceTypeLabel = (type?: string): string => {
+  if (!type) return '未分类';
+  return RESOURCE_TYPE_LABELS[type] || type;
+};

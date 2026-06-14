@@ -436,34 +436,127 @@ const createInitialWill = (): DigitalWill => ({
 const createInitialAuditLogs = (): AuditLogEntry[] => {
   const logs: AuditLogEntry[] = [];
   let previousHash = '00000000';
+  let logIndex = 1;
 
-  const logData = [
-    { action: 'login' as AuditActionType, desc: '用户登录系统', time: new Date('2024-06-01 09:30:00') },
-    { action: 'asset_created' as AuditActionType, desc: '添加资产：微信账号', time: new Date('2024-06-02 14:20:00') },
-    { action: 'heir_added' as AuditActionType, desc: '添加继承人：李芳', time: new Date('2024-06-03 10:15:00') },
-    { action: 'will_updated' as AuditActionType, desc: '更新数字遗嘱触发条件', time: new Date('2024-06-05 16:45:00') },
-    { action: 'mfa_enabled' as AuditActionType, desc: '启用多因素身份验证', time: new Date('2024-06-08 11:00:00') },
-    { action: 'asset_updated' as AuditActionType, desc: '更新资产：比特币钱包信息', time: new Date('2024-06-10 15:30:00') },
-    { action: 'witness_approved' as AuditActionType, desc: '见证人王律师已确认', time: new Date('2024-06-11 09:00:00') },
+  const users: { id: string; role: 'owner' | 'heir' | 'witness' | 'lawyer' | 'admin'; name: string }[] = [
+    { id: 'user-001', role: 'owner', name: '张明' },
+    { id: 'user-002', role: 'heir', name: '李芳' },
+    { id: 'user-003', role: 'heir', name: '张伟' },
+    { id: 'user-004', role: 'lawyer', name: '王律师' },
+    { id: 'user-005', role: 'witness', name: '陈刚' },
+    { id: 'user-006', role: 'admin', name: '系统管理员' },
   ];
 
-  logData.forEach((log, index) => {
-    const data = `${log.action}-${log.desc}-${log.time.toISOString()}`;
-    const hash = generateHash(data + previousHash);
-    logs.push({
-      id: `log-${String(index + 1).padStart(3, '0')}`,
-      timestamp: log.time.toISOString(),
-      action: log.action,
-      userId: 'user-001',
-      userRole: 'owner',
-      description: log.desc,
-      ipAddress: '192.168.1.100',
-      userAgent: 'Chrome/125.0.0.0 Windows NT 10.0',
-      transactionHash: hash,
-      previousHash,
-    });
-    previousHash = hash;
-  });
+  const resourceTypes = ['asset', 'heir', 'will', 'witness', 'approval_group', 'user', 'notification', 'emergency_contact', 'settings', 'time_capsule'];
+  const actions: AuditActionType[] = [
+    'asset_created', 'asset_updated', 'asset_deleted', 'asset_verified',
+    'heir_added', 'heir_removed',
+    'will_updated', 'will_triggered',
+    'mfa_enabled', 'mfa_disabled',
+    'login', 'logout',
+    'witness_approved', 'lawyer_approved',
+    'notification_sent',
+    'healthcheck_reminder', 'healthcheck_settings_updated',
+    'approval_group_created', 'approval_group_updated', 'approval_group_deleted',
+    'witness_assigned_to_group', 'witness_removed_from_group', 'witness_approval_submitted',
+    'bulk_heir_assigned', 'bulk_type_updated', 'bulk_export_csv',
+    'emergency_contact_added', 'emergency_contact_updated', 'emergency_contact_removed', 'emergency_contact_notified',
+    'time_capsule_created', 'time_capsule_updated', 'time_capsule_unlocked',
+  ];
+
+  const actionDescriptions: Record<AuditActionType, (userName: string, resourceType: string) => string> = {
+    asset_created: (_, rt) => `创建${rt}资产记录`,
+    asset_updated: (_, rt) => `更新${rt}资产信息`,
+    asset_deleted: (_, rt) => `删除${rt}资产`,
+    asset_verified: (_, rt) => `验证${rt}资产状态`,
+    heir_added: (name) => `${name}添加了继承人`,
+    heir_removed: (name) => `${name}移除了继承人`,
+    will_updated: (name) => `${name}更新了数字遗嘱`,
+    will_triggered: (name) => `${name}触发了遗嘱执行`,
+    mfa_enabled: (name) => `${name}启用了多因素认证`,
+    mfa_disabled: (name) => `${name}禁用了多因素认证`,
+    login: (name) => `${name}登录了系统`,
+    logout: (name) => `${name}退出了系统`,
+    witness_approved: (name) => `见证人${name}已确认身份`,
+    lawyer_approved: (name) => `律师${name}已通过认证`,
+    notification_sent: (name, rt) => `${name}发送了${rt}相关通知`,
+    healthcheck_reminder: (_, rt) => `系统发送${rt}健康检查提醒`,
+    healthcheck_settings_updated: (name, rt) => `${name}更新了${rt}健康检查设置`,
+    approval_group_created: (name) => `${name}创建了审批组`,
+    approval_group_updated: (name) => `${name}更新了审批组`,
+    approval_group_deleted: (name) => `${name}删除了审批组`,
+    witness_assigned_to_group: (name) => `${name}分配了见证人到审批组`,
+    witness_removed_from_group: (name) => `${name}从审批组移除了见证人`,
+    witness_approval_submitted: (name) => `${name}提交了审批意见`,
+    approval_group_completed: () => `审批组已完成审批`,
+    will_execution_advanced: () => `遗嘱执行进度推进`,
+    branch_condition_evaluated: () => `条件分支已评估`,
+    branch_path_triggered: () => `条件分支路径已触发`,
+    bulk_heir_assigned: (name) => `${name}批量分配了继承人`,
+    bulk_type_updated: (name) => `${name}批量修改了资产分类`,
+    bulk_export_csv: (name) => `${name}导出了资产清单CSV`,
+    emergency_contact_added: (name) => `${name}添加了紧急联系人`,
+    emergency_contact_updated: (name) => `${name}更新了紧急联系人`,
+    emergency_contact_removed: (name) => `${name}移除了紧急联系人`,
+    emergency_contact_verified: (name) => `${name}验证了紧急联系人`,
+    emergency_contact_notified: (name) => `${name}通知了紧急联系人`,
+    emergency_contact_confirmed_alive: (name) => `紧急联系人确认${name}健在`,
+    emergency_contact_confirmed_deceased: (name) => `紧急联系人确认${name}身故`,
+    emergency_contact_triggered_will: () => `紧急联系人触发了遗嘱`,
+    emergency_contact_extended_period: (name) => `${name}延长了观察期`,
+    emergency_settings_updated: (name) => `${name}更新了紧急联系人设置`,
+    time_capsule_created: (name) => `${name}创建了时间胶囊`,
+    time_capsule_updated: (name) => `${name}更新了时间胶囊`,
+    time_capsule_unlocked: (name) => `${name}解锁了时间胶囊`,
+    time_capsule_auto_decrypted: () => `时间胶囊已自动解密`,
+    asset_transferred: (name, rt) => `${name}移交了${rt}资产`,
+  };
+
+  const ipAddresses = ['192.168.1.100', '10.0.0.50', '172.16.0.25', '192.168.2.88', '10.0.1.200'];
+  const userAgents = [
+    'Chrome/125.0.0.0 Windows NT 10.0',
+    'Safari/17.0 Macintosh; Intel Mac OS X 14_0',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)',
+    'Firefox/126.0 Windows NT 10.0',
+    'Edge/125.0 Windows NT 10.0',
+  ];
+
+  const now = new Date();
+  for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
+    const dayDate = new Date(now);
+    dayDate.setDate(dayDate.getDate() - dayOffset);
+    const logsPerDay = Math.floor(Math.random() * 8) + 3;
+
+    for (let i = 0; i < logsPerDay; i++) {
+      const logTime = new Date(dayDate);
+      logTime.setHours(Math.floor(Math.random() * 14) + 8, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
+
+      const user = users[Math.floor(Math.random() * users.length)];
+      const action = actions[Math.floor(Math.random() * actions.length)];
+      const resourceType = resourceTypes[Math.floor(Math.random() * resourceTypes.length)];
+      const desc = actionDescriptions[action]?.(user.name, resourceType) || `${user.name}执行了操作`;
+
+      const data = `${action}-${desc}-${logTime.toISOString()}`;
+      const hash = generateHash(data + previousHash);
+
+      logs.push({
+        id: `log-${String(logIndex).padStart(4, '0')}`,
+        timestamp: logTime.toISOString(),
+        action,
+        userId: user.id,
+        userRole: user.role,
+        description: desc,
+        ipAddress: ipAddresses[Math.floor(Math.random() * ipAddresses.length)],
+        userAgent: userAgents[Math.floor(Math.random() * userAgents.length)],
+        resourceType,
+        resourceId: `res-${Math.floor(Math.random() * 100)}`,
+        transactionHash: hash,
+        previousHash,
+      });
+      previousHash = hash;
+      logIndex++;
+    }
+  }
 
   return logs.reverse();
 };
