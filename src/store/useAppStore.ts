@@ -42,6 +42,11 @@ import type {
   DonationStatus,
   DonationItemType,
   CharityCategory,
+  HeirVerificationDetail,
+  VerificationMaterial,
+  VerificationHistoryRecord,
+  HeirVerificationStatus,
+  VerificationMaterialType,
 } from '@/types';
 import {
   generateId,
@@ -98,6 +103,14 @@ interface AppState {
   updateHeir: (id: string, updates: Partial<Heir>) => void;
   deleteHeir: (id: string) => void;
   reorderHeirs: (heirIds: string[]) => void;
+  sendHeirVerificationReminder: (heirId: string) => void;
+  resetHeirVerification: (heirId: string) => void;
+  verifyHeir: (heirId: string) => void;
+  rejectHeirVerification: (heirId: string, reason: string) => void;
+  approveHeirMaterial: (heirId: string, materialId: string) => void;
+  rejectHeirMaterial: (heirId: string, materialId: string, reason: string) => void;
+  submitHeirMaterial: (heirId: string, material: Omit<VerificationMaterial, 'id' | 'uploadedAt' | 'status'>) => void;
+  getHeirVerificationOverview: () => { total: number; verified: number; pending: number; rejected: number; inProgress: number };
 
   createWill: (will: Partial<DigitalWill>) => void;
   updateWill: (updates: Partial<DigitalWill>) => void;
@@ -358,6 +371,111 @@ const createInitialHeirs = (): Heir[] => [
     createdAt: new Date('2024-01-10').toISOString(),
     assignedAssets: ['asset-001', 'asset-003', 'asset-005'],
     priority: 1,
+    verification: {
+      status: 'verified',
+      progress: 100,
+      totalMaterialsRequired: 3,
+      submittedMaterials: 3,
+      verifiedMaterials: 3,
+      reminderCount: 0,
+      invitedAt: new Date('2024-01-10').toISOString(),
+      verifiedAt: new Date('2024-01-20').toISOString(),
+      materials: [
+        {
+          id: 'mat-001',
+          type: 'id_card',
+          name: '身份证正反面',
+          fileName: 'id_card_lifang.jpg',
+          uploadedAt: new Date('2024-01-12').toISOString(),
+          verifiedAt: new Date('2024-01-15').toISOString(),
+          status: 'verified',
+        },
+        {
+          id: 'mat-002',
+          type: 'household_register',
+          name: '户口本本人页',
+          fileName: 'household_lifang.jpg',
+          uploadedAt: new Date('2024-01-13').toISOString(),
+          verifiedAt: new Date('2024-01-16').toISOString(),
+          status: 'verified',
+        },
+        {
+          id: 'mat-003',
+          type: 'marriage_certificate',
+          name: '结婚证',
+          fileName: 'marriage_cert.jpg',
+          uploadedAt: new Date('2024-01-14').toISOString(),
+          verifiedAt: new Date('2024-01-18').toISOString(),
+          status: 'verified',
+        },
+      ],
+      history: [
+        {
+          id: 'hist-001',
+          timestamp: new Date('2024-01-10').toISOString(),
+          action: 'invited',
+          operatorName: '张明',
+          operatorRole: 'owner',
+          note: '系统发送验证邀请邮件',
+        },
+        {
+          id: 'hist-002',
+          timestamp: new Date('2024-01-12').toISOString(),
+          action: 'material_submitted',
+          operatorName: '李芳',
+          operatorRole: 'heir',
+          materialName: '身份证正反面',
+        },
+        {
+          id: 'hist-003',
+          timestamp: new Date('2024-01-13').toISOString(),
+          action: 'material_submitted',
+          operatorName: '李芳',
+          operatorRole: 'heir',
+          materialName: '户口本本人页',
+        },
+        {
+          id: 'hist-004',
+          timestamp: new Date('2024-01-14').toISOString(),
+          action: 'material_submitted',
+          operatorName: '李芳',
+          operatorRole: 'heir',
+          materialName: '结婚证',
+        },
+        {
+          id: 'hist-005',
+          timestamp: new Date('2024-01-15').toISOString(),
+          action: 'material_approved',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          materialName: '身份证正反面',
+        },
+        {
+          id: 'hist-006',
+          timestamp: new Date('2024-01-16').toISOString(),
+          action: 'material_approved',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          materialName: '户口本本人页',
+        },
+        {
+          id: 'hist-007',
+          timestamp: new Date('2024-01-18').toISOString(),
+          action: 'material_approved',
+          operatorName: '王律师',
+          operatorRole: 'lawyer',
+          materialName: '结婚证',
+        },
+        {
+          id: 'hist-008',
+          timestamp: new Date('2024-01-20').toISOString(),
+          action: 'verified',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          note: '所有材料审核通过，身份验证完成',
+        },
+      ],
+    },
   },
   {
     id: 'heir-002',
@@ -370,6 +488,120 @@ const createInitialHeirs = (): Heir[] => [
     createdAt: new Date('2024-01-12').toISOString(),
     assignedAssets: ['asset-002', 'asset-004', 'asset-006'],
     priority: 2,
+    verification: {
+      status: 'verified',
+      progress: 100,
+      totalMaterialsRequired: 3,
+      submittedMaterials: 3,
+      verifiedMaterials: 3,
+      reminderCount: 1,
+      lastReminderAt: new Date('2024-01-25').toISOString(),
+      invitedAt: new Date('2024-01-12').toISOString(),
+      verifiedAt: new Date('2024-02-05').toISOString(),
+      materials: [
+        {
+          id: 'mat-004',
+          type: 'id_card',
+          name: '身份证正反面',
+          fileName: 'id_card_zhangwei.jpg',
+          uploadedAt: new Date('2024-01-20').toISOString(),
+          verifiedAt: new Date('2024-01-28').toISOString(),
+          status: 'verified',
+        },
+        {
+          id: 'mat-005',
+          type: 'birth_certificate',
+          name: '出生证明',
+          fileName: 'birth_cert_zhangwei.jpg',
+          uploadedAt: new Date('2024-01-22').toISOString(),
+          verifiedAt: new Date('2024-01-30').toISOString(),
+          status: 'verified',
+        },
+        {
+          id: 'mat-006',
+          type: 'household_register',
+          name: '户口本本人页',
+          fileName: 'hukou_zhangwei.jpg',
+          uploadedAt: new Date('2024-01-26').toISOString(),
+          verifiedAt: new Date('2024-02-02').toISOString(),
+          status: 'verified',
+        },
+      ],
+      history: [
+        {
+          id: 'hist-009',
+          timestamp: new Date('2024-01-12').toISOString(),
+          action: 'invited',
+          operatorName: '张明',
+          operatorRole: 'owner',
+          note: '系统发送验证邀请邮件',
+        },
+        {
+          id: 'hist-010',
+          timestamp: new Date('2024-01-20').toISOString(),
+          action: 'material_submitted',
+          operatorName: '张伟',
+          operatorRole: 'heir',
+          materialName: '身份证正反面',
+        },
+        {
+          id: 'hist-011',
+          timestamp: new Date('2024-01-22').toISOString(),
+          action: 'material_submitted',
+          operatorName: '张伟',
+          operatorRole: 'heir',
+          materialName: '出生证明',
+        },
+        {
+          id: 'hist-012',
+          timestamp: new Date('2024-01-25').toISOString(),
+          action: 'reminder_sent',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          note: '提醒提交剩余验证材料',
+        },
+        {
+          id: 'hist-013',
+          timestamp: new Date('2024-01-26').toISOString(),
+          action: 'material_submitted',
+          operatorName: '张伟',
+          operatorRole: 'heir',
+          materialName: '户口本本人页',
+        },
+        {
+          id: 'hist-014',
+          timestamp: new Date('2024-01-28').toISOString(),
+          action: 'material_approved',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          materialName: '身份证正反面',
+        },
+        {
+          id: 'hist-015',
+          timestamp: new Date('2024-01-30').toISOString(),
+          action: 'material_approved',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          materialName: '出生证明',
+        },
+        {
+          id: 'hist-016',
+          timestamp: new Date('2024-02-02').toISOString(),
+          action: 'material_approved',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          materialName: '户口本本人页',
+        },
+        {
+          id: 'hist-017',
+          timestamp: new Date('2024-02-05').toISOString(),
+          action: 'verified',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          note: '所有材料审核通过，身份验证完成',
+        },
+      ],
+    },
   },
   {
     id: 'heir-003',
@@ -382,6 +614,72 @@ const createInitialHeirs = (): Heir[] => [
     createdAt: new Date('2024-02-01').toISOString(),
     assignedAssets: [],
     priority: 3,
+    verification: {
+      status: 'in_progress',
+      progress: 33,
+      totalMaterialsRequired: 3,
+      submittedMaterials: 1,
+      verifiedMaterials: 0,
+      reminderCount: 2,
+      lastReminderAt: new Date('2024-06-01').toISOString(),
+      invitedAt: new Date('2024-02-01').toISOString(),
+      materials: [
+        {
+          id: 'mat-007',
+          type: 'id_card',
+          name: '身份证正反面',
+          fileName: 'id_card_zjg.jpg',
+          uploadedAt: new Date('2024-02-10').toISOString(),
+          status: 'pending',
+        },
+        {
+          id: 'mat-008',
+          type: 'household_register',
+          name: '户口本本人页',
+          status: 'pending',
+        },
+        {
+          id: 'mat-009',
+          type: 'birth_certificate',
+          name: '亲属关系证明',
+          status: 'pending',
+        },
+      ],
+      history: [
+        {
+          id: 'hist-018',
+          timestamp: new Date('2024-02-01').toISOString(),
+          action: 'invited',
+          operatorName: '张明',
+          operatorRole: 'owner',
+          note: '系统发送验证邀请短信',
+        },
+        {
+          id: 'hist-019',
+          timestamp: new Date('2024-02-10').toISOString(),
+          action: 'material_submitted',
+          operatorName: '张建国',
+          operatorRole: 'heir',
+          materialName: '身份证正反面',
+        },
+        {
+          id: 'hist-020',
+          timestamp: new Date('2024-03-15').toISOString(),
+          action: 'reminder_sent',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          note: '第一次提醒：请尽快提交剩余验证材料',
+        },
+        {
+          id: 'hist-021',
+          timestamp: new Date('2024-06-01').toISOString(),
+          action: 'reminder_sent',
+          operatorName: '系统管理员',
+          operatorRole: 'admin',
+          note: '第二次提醒：验证材料尚未提交完整，请尽快完成',
+        },
+      ],
+    },
   },
 ];
 
@@ -600,6 +898,14 @@ const createInitialAuditLogs = (): AuditLogEntry[] => {
     master_password_changed: (name) => `${name}修改了主密码`,
     vault_locked: (name) => `${name}锁定了密码保险箱`,
     vault_unlocked: (name) => `${name}解锁了密码保险箱`,
+
+    heir_verification_reminder_sent: (name) => `${name}发送了继承人验证提醒`,
+    heir_verification_reset: (name) => `${name}重置了继承人验证流程`,
+    heir_verification_completed: (name) => `${name}完成了继承人身份验证`,
+    heir_verification_rejected: (name) => `${name}拒绝了继承人身份验证`,
+    heir_verification_material_submitted: (name) => `${name}提交了验证材料`,
+    heir_verification_material_approved: (name) => `${name}通过了验证材料`,
+    heir_verification_material_rejected: (name) => `${name}驳回了验证材料`,
   };
 
   const ipAddresses = ['192.168.1.100', '10.0.0.50', '172.16.0.25', '192.168.2.88', '10.0.1.200'];
@@ -1066,6 +1372,45 @@ export const useAppStore = create<AppState>()(
         const maxPriority = currentHeirs.length > 0
           ? Math.max(...currentHeirs.map((h) => h.priority))
           : 0;
+        const verification: HeirVerificationDetail = {
+          status: 'not_started',
+          progress: 0,
+          totalMaterialsRequired: 3,
+          submittedMaterials: 0,
+          verifiedMaterials: 0,
+          reminderCount: 0,
+          invitedAt: now,
+          materials: [
+            {
+              id: generateId(),
+              type: 'id_card',
+              name: '身份证正反面',
+              status: 'pending',
+            },
+            {
+              id: generateId(),
+              type: 'household_register',
+              name: '户口本本人页',
+              status: 'pending',
+            },
+            {
+              id: generateId(),
+              type: 'birth_certificate',
+              name: '亲属关系证明',
+              status: 'pending',
+            },
+          ],
+          history: [
+            {
+              id: generateId(),
+              timestamp: now,
+              action: 'invited',
+              operatorName: get().currentUser?.name,
+              operatorRole: get().currentUser?.role,
+              note: '系统发送验证邀请',
+            },
+          ],
+        };
         const newHeir: Heir = {
           ...heir,
           id: generateId(),
@@ -1073,6 +1418,7 @@ export const useAppStore = create<AppState>()(
           assignedAssets: [],
           priority: maxPriority + 1,
           createdAt: now,
+          verification,
         };
         set((state) => ({ heirs: [...state.heirs, newHeir] }));
         get().addAuditLog({
@@ -1130,6 +1476,392 @@ export const useAppStore = create<AppState>()(
           description: '继承人顺位已调整',
           resourceType: 'heir',
         });
+      },
+
+      sendHeirVerificationReminder: (heirId) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'reminder_sent',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          note: '管理员手动发送验证提醒',
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) =>
+            h.id === heirId && h.verification
+              ? {
+                  ...h,
+                  verification: {
+                    ...h.verification,
+                    lastReminderAt: now,
+                    reminderCount: h.verification.reminderCount + 1,
+                    history: [...h.verification.history, historyRecord],
+                  },
+                }
+              : h
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_reminder_sent',
+          description: `向继承人「${heir.name}」发送验证提醒`,
+          resourceType: 'heir',
+          resourceId: heirId,
+        });
+
+        get().addNotification({
+          type: 'info',
+          title: '提醒已发送',
+          message: `已向 ${heir.name} 发送身份验证提醒邮件`,
+        });
+      },
+
+      resetHeirVerification: (heirId) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const resetMaterials: VerificationMaterial[] = heir.verification.materials.map((m) => ({
+          ...m,
+          status: 'pending' as VerificationStatus,
+          uploadedAt: m.uploadedAt,
+          verifiedAt: undefined,
+          fileName: undefined,
+        }));
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'reset',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          note: '管理员重置验证流程',
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) =>
+            h.id === heirId && h.verification
+              ? {
+                  ...h,
+                  isVerified: false,
+                  verification: {
+                    ...h.verification,
+                    status: 'not_started',
+                    progress: 0,
+                    submittedMaterials: 0,
+                    verifiedMaterials: 0,
+                    rejectionReason: undefined,
+                    materials: resetMaterials,
+                    history: [...h.verification.history, historyRecord],
+                  },
+                }
+              : h
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_reset',
+          description: `重置继承人「${heir.name}」的验证流程`,
+          resourceType: 'heir',
+          resourceId: heirId,
+        });
+
+        get().addNotification({
+          type: 'info',
+          title: '验证已重置',
+          message: `继承人 ${heir.name} 的验证流程已重置`,
+        });
+      },
+
+      verifyHeir: (heirId) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'verified',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          note: '管理员手动确认验证通过',
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) =>
+            h.id === heirId && h.verification
+              ? {
+                  ...h,
+                  isVerified: true,
+                  verification: {
+                    ...h.verification,
+                    status: 'verified',
+                    progress: 100,
+                    verifiedMaterials: h.verification.totalMaterialsRequired,
+                    submittedMaterials: h.verification.totalMaterialsRequired,
+                    verifiedAt: now,
+                    history: [...h.verification.history, historyRecord],
+                  },
+                }
+              : h
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_completed',
+          description: `继承人「${heir.name}」身份验证通过`,
+          resourceType: 'heir',
+          resourceId: heirId,
+        });
+
+        get().addNotification({
+          type: 'success',
+          title: '验证通过',
+          message: `继承人 ${heir.name} 身份验证已通过`,
+        });
+      },
+
+      rejectHeirVerification: (heirId, reason) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'rejected',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          note: reason,
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) =>
+            h.id === heirId && h.verification
+              ? {
+                  ...h,
+                  isVerified: false,
+                  verification: {
+                    ...h.verification,
+                    status: 'rejected',
+                    rejectionReason: reason,
+                    history: [...h.verification.history, historyRecord],
+                  },
+                }
+              : h
+          ),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_rejected',
+          description: `继承人「${heir.name}」身份验证被拒绝`,
+          resourceType: 'heir',
+          resourceId: heirId,
+          newValue: reason,
+        });
+
+        get().addNotification({
+          type: 'error',
+          title: '验证拒绝',
+          message: `继承人 ${heir.name} 的身份验证已被拒绝`,
+        });
+      },
+
+      approveHeirMaterial: (heirId, materialId) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const material = heir.verification.materials.find((m) => m.id === materialId);
+        if (!material) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'material_approved',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          materialId,
+          materialName: material.name,
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) => {
+            if (h.id !== heirId || !h.verification) return h;
+
+            const updatedMaterials = h.verification.materials.map((m) =>
+              m.id === materialId
+                ? { ...m, status: 'verified' as VerificationStatus, verifiedAt: now }
+                : m
+            );
+
+            const verifiedCount = updatedMaterials.filter((m) => m.status === 'verified').length;
+            const submittedCount = updatedMaterials.filter((m) => m.uploadedAt).length;
+            const progress = h.verification.totalMaterialsRequired > 0
+              ? Math.round((verifiedCount / h.verification.totalMaterialsRequired) * 100)
+              : 0;
+
+            const allVerified = verifiedCount >= h.verification.totalMaterialsRequired;
+
+            return {
+              ...h,
+              isVerified: allVerified,
+              verification: {
+                ...h.verification,
+                status: allVerified ? 'verified' : 'in_progress',
+                progress,
+                submittedMaterials: submittedCount,
+                verifiedMaterials: verifiedCount,
+                verifiedAt: allVerified ? now : h.verification.verifiedAt,
+                materials: updatedMaterials,
+                history: [...h.verification.history, historyRecord],
+              },
+            };
+          }),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_material_approved',
+          description: `继承人「${heir.name}」的材料「${material.name}」审核通过`,
+          resourceType: 'heir',
+          resourceId: heirId,
+        });
+      },
+
+      rejectHeirMaterial: (heirId, materialId, reason) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const material = heir.verification.materials.find((m) => m.id === materialId);
+        if (!material) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'material_rejected',
+          operatorName: get().currentUser?.name,
+          operatorRole: get().currentUser?.role,
+          materialId,
+          materialName: material.name,
+          note: reason,
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) => {
+            if (h.id !== heirId || !h.verification) return h;
+
+            const updatedMaterials = h.verification.materials.map((m) =>
+              m.id === materialId
+                ? { ...m, status: 'rejected' as VerificationStatus, note: reason }
+                : m
+            );
+
+            const verifiedCount = updatedMaterials.filter((m) => m.status === 'verified').length;
+            const progress = h.verification.totalMaterialsRequired > 0
+              ? Math.round((verifiedCount / h.verification.totalMaterialsRequired) * 100)
+              : 0;
+
+            return {
+              ...h,
+              isVerified: false,
+              verification: {
+                ...h.verification,
+                status: 'in_progress',
+                progress,
+                verifiedMaterials: verifiedCount,
+                materials: updatedMaterials,
+                history: [...h.verification.history, historyRecord],
+              },
+            };
+          }),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_material_rejected',
+          description: `继承人「${heir.name}」的材料「${material.name}」被驳回`,
+          resourceType: 'heir',
+          resourceId: heirId,
+          newValue: reason,
+        });
+      },
+
+      submitHeirMaterial: (heirId, material) => {
+        const now = new Date().toISOString();
+        const heir = get().heirs.find((h) => h.id === heirId);
+        if (!heir || !heir.verification) return;
+
+        const historyRecord: VerificationHistoryRecord = {
+          id: generateId(),
+          timestamp: now,
+          action: 'material_submitted',
+          operatorName: heir.name,
+          operatorRole: 'heir',
+          materialName: material.name,
+        };
+
+        set((state) => ({
+          heirs: state.heirs.map((h) => {
+            if (h.id !== heirId || !h.verification) return h;
+
+            const updatedMaterials = h.verification.materials.map((m) =>
+              m.type === material.type
+                ? {
+                    ...m,
+                    name: material.name,
+                    fileName: material.fileName,
+                    uploadedAt: now,
+                    status: 'pending' as VerificationStatus,
+                    note: material.note,
+                  }
+                : m
+            );
+
+            const submittedCount = updatedMaterials.filter((m) => m.uploadedAt).length;
+            const verifiedCount = updatedMaterials.filter((m) => m.status === 'verified').length;
+            const progress = h.verification.totalMaterialsRequired > 0
+              ? Math.round((submittedCount / h.verification.totalMaterialsRequired) * 100)
+              : 0;
+
+            return {
+              ...h,
+              verification: {
+                ...h.verification,
+                status: submittedCount > 0 ? 'in_progress' : 'not_started',
+                progress,
+                submittedMaterials: submittedCount,
+                verifiedMaterials: verifiedCount,
+                materials: updatedMaterials,
+                history: [...h.verification.history, historyRecord],
+              },
+            };
+          }),
+        }));
+
+        get().addAuditLog({
+          action: 'heir_verification_material_submitted',
+          description: `继承人「${heir.name}」提交了材料「${material.name}」`,
+          resourceType: 'heir',
+          resourceId: heirId,
+        });
+      },
+
+      getHeirVerificationOverview: () => {
+        const { heirs } = get();
+        const total = heirs.length;
+        const verified = heirs.filter((h) => h.verification?.status === 'verified').length;
+        const inProgress = heirs.filter((h) => h.verification?.status === 'in_progress').length;
+        const rejected = heirs.filter((h) => h.verification?.status === 'rejected').length;
+        const pending = heirs.filter(
+          (h) => !h.verification || h.verification.status === 'not_started'
+        ).length;
+        return { total, verified, inProgress, rejected, pending };
       },
 
       createWill: (will) => {

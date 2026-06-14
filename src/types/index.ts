@@ -10,6 +10,55 @@ export type WillStatus = 'draft' | 'active' | 'triggered' | 'executing' | 'compl
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
+export type HeirVerificationStatus = 'not_started' | 'in_progress' | 'verified' | 'rejected' | 'expired';
+
+export type VerificationMaterialType =
+  | 'id_card'
+  | 'household_register'
+  | 'birth_certificate'
+  | 'marriage_certificate'
+  | 'death_certificate'
+  | 'power_of_attorney'
+  | 'other';
+
+export interface VerificationMaterial {
+  id: string;
+  type: VerificationMaterialType;
+  name: string;
+  fileName?: string;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  status: VerificationStatus;
+  note?: string;
+}
+
+export interface VerificationHistoryRecord {
+  id: string;
+  timestamp: string;
+  action: 'invited' | 'material_submitted' | 'material_approved' | 'material_rejected' | 'verified' | 'rejected' | 'reset' | 'reminder_sent';
+  operatorId?: string;
+  operatorName?: string;
+  operatorRole?: UserRole;
+  note?: string;
+  materialId?: string;
+  materialName?: string;
+}
+
+export interface HeirVerificationDetail {
+  status: HeirVerificationStatus;
+  progress: number;
+  totalMaterialsRequired: number;
+  submittedMaterials: number;
+  verifiedMaterials: number;
+  lastReminderAt?: string;
+  reminderCount: number;
+  rejectionReason?: string;
+  materials: VerificationMaterial[];
+  history: VerificationHistoryRecord[];
+  invitedAt: string;
+  verifiedAt?: string;
+}
+
 export type ApprovalGroupStatus = 'pending' | 'approved' | 'rejected' | 'partial';
 
 export type WitnessApprovalDecision = 'approved' | 'rejected' | 'pending';
@@ -94,6 +143,13 @@ export type AuditActionType =
   | 'emergency_contact_extended_period'
   | 'emergency_settings_updated'
   | 'time_capsule_created'
+  | 'heir_verification_reminder_sent'
+  | 'heir_verification_reset'
+  | 'heir_verification_completed'
+  | 'heir_verification_rejected'
+  | 'heir_verification_material_submitted'
+  | 'heir_verification_material_approved'
+  | 'heir_verification_material_rejected'
   | 'time_capsule_updated'
   | 'time_capsule_unlocked'
   | 'time_capsule_auto_decrypted'
@@ -161,6 +217,7 @@ export interface Heir {
   createdAt: string;
   assignedAssets: string[];
   priority: number;
+  verification?: HeirVerificationDetail;
 }
 
 export interface TriggerCondition {

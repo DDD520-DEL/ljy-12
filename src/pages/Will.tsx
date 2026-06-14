@@ -31,6 +31,7 @@ import {
   Heart,
   ExternalLink,
   CheckCircle2,
+  XCircle,
   BookTemplate,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -59,6 +60,8 @@ import {
   getDaysUntilUnlock,
   DONATION_STATUS_LABELS,
   DONATION_STATUS_COLORS,
+  HEIR_VERIFICATION_STATUS_LABELS,
+  HEIR_VERIFICATION_STATUS_COLORS,
 } from '@/constants';
 import { cn } from '@/lib/utils';
 import type { TriggerType, ExecutionStep, WitnessApprovalDecision, Branch, BranchCondition, ConditionField, ConditionOperator } from '@/types';
@@ -1202,6 +1205,9 @@ export default function Will() {
                       const chainHeir = heirs.find((h) => h.id === chainHeirId);
                       if (!chainHeir) return null;
                       const isFirst = idx === 0;
+                      const verificationStatus = chainHeir.verification?.status || 'not_started';
+                      const isVerified = verificationStatus === 'verified';
+                      const isRejected = verificationStatus === 'rejected';
                       return (
                         <span key={chainHeirId} className="inline-flex items-center gap-1">
                           {idx > 0 && <ArrowRight className="w-3 h-3 text-gray-300" />}
@@ -1210,7 +1216,8 @@ export default function Will() {
                               'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium',
                               isFirst
                                 ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-gray-100 text-gray-600'
+                                : 'bg-gray-100 text-gray-600',
+                              isRejected && 'opacity-60 line-through'
                             )}
                           >
                             <User className="w-3 h-3" />
@@ -1222,6 +1229,17 @@ export default function Will() {
                                 : 'bg-gray-200 text-gray-500'
                             )}>
                               第{idx + 1}顺位
+                            </span>
+                            <span className={cn(
+                              'ml-1 px-1.5 py-0.5 rounded text-[9px] font-medium',
+                              HEIR_VERIFICATION_STATUS_COLORS[verificationStatus]
+                            )}>
+                              {isVerified ? (
+                                <CheckCircle2 className="w-2.5 h-2.5 inline mr-0.5" />
+                              ) : isRejected ? (
+                                <XCircle className="w-2.5 h-2.5 inline mr-0.5" />
+                              ) : null}
+                              {HEIR_VERIFICATION_STATUS_LABELS[verificationStatus]}
                             </span>
                           </span>
                           {!isFirst && (

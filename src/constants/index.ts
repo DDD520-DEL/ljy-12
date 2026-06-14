@@ -1,4 +1,4 @@
-import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel, CharityCategory, DonationItemType, DonationStatus, Charity, WillTemplate, WillTemplateCategory } from '@/types';
+import { AssetType, HeirRelationship, TriggerType, WillStatus, UserRole, AuditActionType, HealthCheckPeriod, HealthCheckStatus, ApprovalGroupStatus, WitnessApprovalDecision, ConditionField, ConditionOperator, TimeCapsuleStatus, CredentialCategory, CredentialAccessLevel, CharityCategory, DonationItemType, DonationStatus, Charity, WillTemplate, WillTemplateCategory, HeirVerificationStatus, VerificationMaterialType } from '@/types';
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   social_media: '社交媒体',
@@ -115,6 +115,13 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   master_password_changed: '修改主密码',
   vault_locked: '锁定保险箱',
   vault_unlocked: '解锁保险箱',
+  heir_verification_reminder_sent: '发送验证提醒',
+  heir_verification_reset: '重置验证流程',
+  heir_verification_completed: '完成继承人验证',
+  heir_verification_rejected: '拒绝继承人验证',
+  heir_verification_material_submitted: '提交验证材料',
+  heir_verification_material_approved: '通过验证材料',
+  heir_verification_material_rejected: '驳回验证材料',
   donation_plan_created: '创建捐赠规划',
   donation_plan_updated: '更新捐赠规划',
   donation_plan_deleted: '删除捐赠规划',
@@ -150,6 +157,43 @@ export const WITNESS_APPROVAL_DECISION_COLORS: Record<WitnessApprovalDecision, s
   pending: 'bg-gray-100 text-gray-600',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+};
+
+export const HEIR_VERIFICATION_STATUS_LABELS: Record<HeirVerificationStatus, string> = {
+  not_started: '未开始',
+  in_progress: '进行中',
+  verified: '已验证',
+  rejected: '已拒绝',
+  expired: '已过期',
+};
+
+export const HEIR_VERIFICATION_STATUS_COLORS: Record<HeirVerificationStatus, string> = {
+  not_started: 'bg-gray-100 text-gray-600',
+  in_progress: 'bg-blue-100 text-blue-700',
+  verified: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+  expired: 'bg-orange-100 text-orange-700',
+};
+
+export const VERIFICATION_MATERIAL_TYPE_LABELS: Record<VerificationMaterialType, string> = {
+  id_card: '身份证',
+  household_register: '户口本',
+  birth_certificate: '出生证明',
+  marriage_certificate: '结婚证',
+  death_certificate: '死亡证明',
+  power_of_attorney: '授权委托书',
+  other: '其他材料',
+};
+
+export const VERIFICATION_HISTORY_ACTION_LABELS: Record<string, string> = {
+  invited: '邀请验证',
+  material_submitted: '提交材料',
+  material_approved: '材料通过',
+  material_rejected: '材料驳回',
+  verified: '验证通过',
+  rejected: '验证拒绝',
+  reset: '重置验证',
+  reminder_sent: '发送提醒',
 };
 
 export const HEALTH_CHECK_PERIOD_LABELS: Record<HealthCheckPeriod, string> = {
